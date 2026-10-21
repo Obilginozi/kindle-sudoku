@@ -1,0 +1,1796 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Sudoku</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+  body { padding: 8px; font-family: sans-serif; }
+  h1 { font-size: 28px; font-weight: bold; text-align: center; margin: 8px 0; }
+  p { margin: 6px 0; }
+  button, input.name {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin: 8px 0;
+    padding: 8px;
+    font-size: 18px;
+    font-family: sans-serif;
+    background: #fff;
+    color: #000;
+    border: 2px solid #000;
+    border-radius: 0;
+  }
+  button.on { background: #000; color: #fff; }
+  .meta { text-align: center; font-size: 16px; }
+  .about { display: block; font-size: 14px; font-weight: normal; }
+  .err { min-height: 1.2em; font-size: 16px; }
+  .block { border: 2px solid #000; padding: 8px; margin: 8px 0; }
+  .bname { font-weight: bold; font-size: 18px; margin-bottom: 4px; }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  table.board {
+    width: 100%;
+    max-width: 640px;
+    margin: 8px auto;
+    border-collapse: collapse;
+    table-layout: fixed;
+    background: #fff;
+  }
+  table.board td.c {
+    border: 1px solid #000;
+    text-align: center;
+    vertical-align: middle;
+    padding: 0;
+    font-weight: normal;
+    background: #fff;
+    color: #000;
+  }
+  table.board td.bl { border-left-width: 3px; }
+  table.board td.br { border-right-width: 3px; }
+  table.board td.bt { border-top-width: 3px; }
+  table.board td.bb { border-bottom-width: 3px; }
+  table.board td.given { font-weight: bold; }
+  table.board td.sel { outline: 3px solid #000; }
+  table.board td.bad { background: #000; color: #fff; }
+  table.n { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.board table.n td {
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font-weight: normal;
+    font-size: 8px;
+    line-height: 1.1;
+    padding: 0;
+    height: auto;
+  }
+  table.pad {
+    width: 100%;
+    max-width: 640px;
+    margin: 6px auto;
+    border-collapse: separate;
+    border-spacing: 4px;
+  }
+  table.pad td { width: 33%; padding: 0; }
+  table.pad button { margin: 0; font-size: 22px; min-height: 48px; }
+  .hintbox { border: 2px solid #000; padding: 8px; margin: 8px 0; font-size: 16px; }
+  #flash { display: none; background: #fff; height: 2400px; }
+</style>
+</head>
+<body>
+<div id="flash"></div>
+<div id="app" class="wrap"></div>
+<script>
+/* Human Sudoku techniques, easiest first. ES5, no library.
+   Ratings match the game bands:
+   1 hidden single, 2 naked single,
+   3 pointing, 4 claiming,
+   5 naked pair, 6 hidden pair,
+   7 naked triple, 8 hidden triple, 9 x-wing,
+   10 swordfish, 11 xy-wing, 12 xyz-wing. */
+var SudokuTech = (function () {
+  'use strict';
+
+  var ALL = 1022;
+  var ROWS = [];
+  var COLS = [];
+  var BOXES = [];
+  var UNITS = [];
+  var PEERS = [];
+  var SEE = [];
+
+  function boxOf(i) {
+    return (((i / 9) | 0) / 3 | 0) * 3 + (((i % 9) / 3) | 0);
+  }
+
+  function popcount(n) {
+    var c = 0;
+    while (n) {
+      n &= n - 1;
+      c++;
+    }
+    return c;
+  }
+
+  function digitOfMask(mask) {
+    var d = 0;
+    while (mask > 1) {
+      mask >>= 1;
+      d++;
+    }
+    return d;
+  }
+
+  function maskDigits(mask) {
+    var ds = [];
+    var d;
+    for (d = 1; d <= 9; d++) {
+      if (mask & (1 << d)) ds.push(d);
+    }
+    return ds;
+  }
+
+  function combinations(arr, k) {
+    var out = [];
+    var n = arr.length;
+    function rec(start, combo) {
+      var i;
+      if (combo.length === k) {
+        out.push(combo.slice());
+        return;
+      }
+      for (i = start; i < n; i++) {
+        combo.push(arr[i]);
+        rec(i + 1, combo);
+        combo.pop();
+      }
+    }
+    rec(0, []);
+    return out;
+  }
+
+  function unitMeta(u) {
+    if (u < 9) return { house: 'row', houseIndex: u };
+    if (u < 18) return { house: 'col', houseIndex: u - 9 };
+    return { house: 'box', houseIndex: u - 18 };
+  }
+
+  (function buildMaps() {
+    var r, c, b, i, j, k, list, seen, unit;
+    for (r = 0; r < 9; r++) {
+      list = [];
+      for (c = 0; c < 9; c++) list.push(r * 9 + c);
+      ROWS.push(list);
+      UNITS.push(list);
+    }
+    for (c = 0; c < 9; c++) {
+      list = [];
+      for (r = 0; r < 9; r++) list.push(r * 9 + c);
+      COLS.push(list);
+      UNITS.push(list);
+    }
+    for (b = 0; b < 9; b++) {
+      list = [];
+      var br = ((b / 3) | 0) * 3;
+      var bc = (b % 3) * 3;
+      for (r = 0; r < 3; r++) {
+        for (c = 0; c < 3; c++) list.push((br + r) * 9 + (bc + c));
+      }
+      BOXES.push(list);
+      UNITS.push(list);
+    }
+    for (i = 0; i < 81; i++) {
+      seen = {};
+      list = [];
+      unit = ROWS[(i / 9) | 0];
+      for (k = 0; k < 9; k++) {
+        j = unit[k];
+        if (j !== i && !seen[j]) { seen[j] = 1; list.push(j); }
+      }
+      unit = COLS[i % 9];
+      for (k = 0; k < 9; k++) {
+        j = unit[k];
+        if (j !== i && !seen[j]) { seen[j] = 1; list.push(j); }
+      }
+      unit = BOXES[boxOf(i)];
+      for (k = 0; k < 9; k++) {
+        j = unit[k];
+        if (j !== i && !seen[j]) { seen[j] = 1; list.push(j); }
+      }
+      PEERS.push(list);
+      SEE.push([]);
+    }
+    for (i = 0; i < 81; i++) {
+      for (j = 0; j < 81; j++) SEE[i][j] = 0;
+      list = PEERS[i];
+      for (k = 0; k < list.length; k++) SEE[i][list[k]] = 1;
+    }
+  })();
+
+  function initState(src) {
+    var grid = [];
+    var cands = [];
+    var rows = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    var cols = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    var boxes = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    var i, d, bit, r, c, b;
+    for (i = 0; i < 81; i++) {
+      d = src[i] | 0;
+      if (d < 0 || d > 9) return null;
+      grid.push(d);
+      r = (i / 9) | 0;
+      c = i % 9;
+      b = boxOf(i);
+      if (d) {
+        bit = 1 << d;
+        if ((rows[r] | cols[c] | boxes[b]) & bit) return null;
+        rows[r] |= bit;
+        cols[c] |= bit;
+        boxes[b] |= bit;
+      }
+    }
+    for (i = 0; i < 81; i++) {
+      if (grid[i]) {
+        cands.push(0);
+      } else {
+        r = (i / 9) | 0;
+        c = i % 9;
+        b = boxOf(i);
+        cands.push(ALL & ~(rows[r] | cols[c] | boxes[b]));
+        if (!cands[i]) return null;
+      }
+    }
+    return { grid: grid, cands: cands };
+  }
+
+  function isSolved(grid) {
+    var i;
+    for (i = 0; i < 81; i++) if (!grid[i]) return false;
+    return true;
+  }
+
+  function place(state, index, digit) {
+    var bit = 1 << digit;
+    var list = PEERS[index];
+    var k, j;
+    state.grid[index] = digit;
+    state.cands[index] = 0;
+    for (k = 0; k < list.length; k++) {
+      j = list[k];
+      if (state.grid[j]) continue;
+      state.cands[j] &= ~bit;
+      if (!state.cands[j]) return false;
+    }
+    return true;
+  }
+
+  function applyElim(state, elim) {
+    var k, bit, i, changed;
+    changed = false;
+    for (k = 0; k < elim.length; k++) {
+      i = elim[k].index;
+      if (state.grid[i]) continue;
+      bit = 1 << elim[k].digit;
+      if (state.cands[i] & bit) {
+        state.cands[i] &= ~bit;
+        changed = true;
+        if (!state.cands[i]) return false;
+      }
+    }
+    return changed;
+  }
+
+  function findHiddenSingle(state) {
+    var u, k, d, bit, count, found, unit, meta, i;
+    for (u = 0; u < 27; u++) {
+      unit = UNITS[u];
+      for (d = 1; d <= 9; d++) {
+        bit = 1 << d;
+        count = 0;
+        found = -1;
+        for (k = 0; k < 9; k++) {
+          i = unit[k];
+          if (state.grid[i] === d) { count = 0; break; }
+          if (!state.grid[i] && (state.cands[i] & bit)) {
+            count++;
+            found = i;
+            if (count > 1) break;
+          }
+        }
+        if (count === 1) {
+          meta = unitMeta(u);
+          return {
+            tech: 1,
+            place: { index: found, digit: d },
+            digit: d,
+            house: meta.house,
+            houseIndex: meta.houseIndex
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findNakedSingle(state) {
+    var i, m, d;
+    for (i = 0; i < 81; i++) {
+      if (state.grid[i]) continue;
+      m = state.cands[i];
+      if (m && (m & (m - 1)) === 0) {
+        d = digitOfMask(m);
+        return { tech: 2, place: { index: i, digit: d }, digit: d, index: i };
+      }
+    }
+    return null;
+  }
+
+  function findPointing(state) {
+    var b, d, bit, k, i, n, rowBits, colBits, elim, row, col, c, r;
+    for (b = 0; b < 9; b++) {
+      for (d = 1; d <= 9; d++) {
+        bit = 1 << d;
+        n = 0;
+        rowBits = 0;
+        colBits = 0;
+        for (k = 0; k < 9; k++) {
+          i = BOXES[b][k];
+          if (!state.grid[i] && (state.cands[i] & bit)) {
+            n++;
+            rowBits |= 1 << ((i / 9) | 0);
+            colBits |= 1 << (i % 9);
+          }
+        }
+        if (n < 2) continue;
+        elim = [];
+        if ((rowBits & (rowBits - 1)) === 0) {
+          row = digitOfMask(rowBits);
+          for (c = 0; c < 9; c++) {
+            i = row * 9 + c;
+            if (boxOf(i) !== b && !state.grid[i] && (state.cands[i] & bit)) {
+              elim.push({ index: i, digit: d });
+            }
+          }
+        } else if ((colBits & (colBits - 1)) === 0) {
+          col = digitOfMask(colBits);
+          for (r = 0; r < 9; r++) {
+            i = r * 9 + col;
+            if (boxOf(i) !== b && !state.grid[i] && (state.cands[i] & bit)) {
+              elim.push({ index: i, digit: d });
+            }
+          }
+        }
+        if (elim.length) {
+          return { tech: 3, elim: elim, digit: d, house: 'box', houseIndex: b };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findClaiming(state) {
+    var r, c, d, bit, n, boxBits, b, elim, k, i, line;
+    for (r = 0; r < 9; r++) {
+      for (d = 1; d <= 9; d++) {
+        bit = 1 << d;
+        n = 0;
+        boxBits = 0;
+        for (c = 0; c < 9; c++) {
+          i = r * 9 + c;
+          if (!state.grid[i] && (state.cands[i] & bit)) {
+            n++;
+            boxBits |= 1 << boxOf(i);
+          }
+        }
+        if (n >= 2 && (boxBits & (boxBits - 1)) === 0) {
+          b = digitOfMask(boxBits);
+          elim = [];
+          for (k = 0; k < 9; k++) {
+            i = BOXES[b][k];
+            if (((i / 9) | 0) !== r && !state.grid[i] && (state.cands[i] & bit)) {
+              elim.push({ index: i, digit: d });
+            }
+          }
+          if (elim.length) {
+            return { tech: 4, elim: elim, digit: d, house: 'row', houseIndex: r };
+          }
+        }
+      }
+    }
+    for (c = 0; c < 9; c++) {
+      for (d = 1; d <= 9; d++) {
+        bit = 1 << d;
+        n = 0;
+        boxBits = 0;
+        for (r = 0; r < 9; r++) {
+          i = r * 9 + c;
+          if (!state.grid[i] && (state.cands[i] & bit)) {
+            n++;
+            boxBits |= 1 << boxOf(i);
+          }
+        }
+        if (n >= 2 && (boxBits & (boxBits - 1)) === 0) {
+          b = digitOfMask(boxBits);
+          elim = [];
+          for (k = 0; k < 9; k++) {
+            i = BOXES[b][k];
+            if ((i % 9) !== c && !state.grid[i] && (state.cands[i] & bit)) {
+              elim.push({ index: i, digit: d });
+            }
+          }
+          if (elim.length) {
+            return { tech: 4, elim: elim, digit: d, house: 'col', houseIndex: c };
+          }
+        }
+      }
+    }
+    line = null;
+    return line;
+  }
+
+  function findNakedSubset(state, size, tech) {
+    var u, k, i, pc, idxs, combos, ci, combo, union, elim, j, inCombo, bits, d, meta;
+    for (u = 0; u < 27; u++) {
+      idxs = [];
+      for (k = 0; k < 9; k++) {
+        i = UNITS[u][k];
+        if (state.grid[i]) continue;
+        pc = popcount(state.cands[i]);
+        if (pc >= 2 && pc <= size) idxs.push(i);
+      }
+      if (idxs.length < size) continue;
+      combos = combinations(idxs, size);
+      for (ci = 0; ci < combos.length; ci++) {
+        combo = combos[ci];
+        union = 0;
+        for (j = 0; j < combo.length; j++) union |= state.cands[combo[j]];
+        if (popcount(union) !== size) continue;
+        elim = [];
+        for (k = 0; k < 9; k++) {
+          i = UNITS[u][k];
+          if (state.grid[i]) continue;
+          inCombo = false;
+          for (j = 0; j < combo.length; j++) if (combo[j] === i) inCombo = true;
+          if (inCombo) continue;
+          bits = state.cands[i] & union;
+          if (!bits) continue;
+          for (d = 1; d <= 9; d++) {
+            if (bits & (1 << d)) elim.push({ index: i, digit: d });
+          }
+        }
+        if (elim.length) {
+          meta = unitMeta(u);
+          return {
+            tech: tech,
+            elim: elim,
+            digits: maskDigits(union),
+            house: meta.house,
+            houseIndex: meta.houseIndex
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findHiddenSubset(state, size, tech) {
+    var u, d, k, i, digitList, combos, ci, combo, positions, seen, p, elim, bits, dd, meta, cell;
+    for (u = 0; u < 27; u++) {
+      digitList = [];
+      var where = [];
+      for (d = 1; d <= 9; d++) {
+        positions = [];
+        for (k = 0; k < 9; k++) {
+          i = UNITS[u][k];
+          if (!state.grid[i] && (state.cands[i] & (1 << d))) positions.push(i);
+        }
+        where[d] = positions;
+        if (positions.length >= 1 && positions.length <= size) digitList.push(d);
+      }
+      if (digitList.length < size) continue;
+      combos = combinations(digitList, size);
+      for (ci = 0; ci < combos.length; ci++) {
+        combo = combos[ci];
+        seen = {};
+        positions = [];
+        for (p = 0; p < combo.length; p++) {
+          var cells = where[combo[p]];
+          for (k = 0; k < cells.length; k++) {
+            cell = cells[k];
+            if (!seen[cell]) {
+              seen[cell] = 1;
+              positions.push(cell);
+              if (positions.length > size) break;
+            }
+          }
+          if (positions.length > size) break;
+        }
+        if (positions.length !== size) continue;
+        elim = [];
+        bits = 0;
+        for (p = 0; p < combo.length; p++) bits |= 1 << combo[p];
+        for (k = 0; k < positions.length; k++) {
+          i = positions[k];
+          for (dd = 1; dd <= 9; dd++) {
+            if ((state.cands[i] & (1 << dd)) && !(bits & (1 << dd))) {
+              elim.push({ index: i, digit: dd });
+            }
+          }
+        }
+        if (elim.length) {
+          meta = unitMeta(u);
+          return {
+            tech: tech,
+            elim: elim,
+            digits: combo.slice(),
+            house: meta.house,
+            houseIndex: meta.houseIndex
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findFish(state, size, tech) {
+    var d, bit, r, c, i, cols, rows, bases, combos, ci, combo, unionMap, union, e, elim, rr, cc, inBase;
+    for (d = 1; d <= 9; d++) {
+      bit = 1 << d;
+      bases = [];
+      for (r = 0; r < 9; r++) {
+        cols = [];
+        for (c = 0; c < 9; c++) {
+          i = r * 9 + c;
+          if (!state.grid[i] && (state.cands[i] & bit)) cols.push(c);
+        }
+        if (cols.length >= 2 && cols.length <= size) bases.push({ line: r, cover: cols });
+      }
+      if (bases.length >= size) {
+        combos = combinations(bases, size);
+        for (ci = 0; ci < combos.length; ci++) {
+          combo = combos[ci];
+          unionMap = {};
+          union = [];
+          for (e = 0; e < combo.length; e++) {
+            for (c = 0; c < combo[e].cover.length; c++) {
+              cc = combo[e].cover[c];
+              if (!unionMap[cc]) { unionMap[cc] = 1; union.push(cc); }
+            }
+          }
+          if (union.length !== size) continue;
+          elim = [];
+          for (rr = 0; rr < 9; rr++) {
+            inBase = false;
+            for (e = 0; e < combo.length; e++) if (combo[e].line === rr) inBase = true;
+            if (inBase) continue;
+            for (c = 0; c < union.length; c++) {
+              i = rr * 9 + union[c];
+              if (!state.grid[i] && (state.cands[i] & bit)) elim.push({ index: i, digit: d });
+            }
+          }
+          if (elim.length) return { tech: tech, elim: elim, digit: d, house: 'row' };
+        }
+      }
+      bases = [];
+      for (c = 0; c < 9; c++) {
+        rows = [];
+        for (r = 0; r < 9; r++) {
+          i = r * 9 + c;
+          if (!state.grid[i] && (state.cands[i] & bit)) rows.push(r);
+        }
+        if (rows.length >= 2 && rows.length <= size) bases.push({ line: c, cover: rows });
+      }
+      if (bases.length >= size) {
+        combos = combinations(bases, size);
+        for (ci = 0; ci < combos.length; ci++) {
+          combo = combos[ci];
+          unionMap = {};
+          union = [];
+          for (e = 0; e < combo.length; e++) {
+            for (r = 0; r < combo[e].cover.length; r++) {
+              rr = combo[e].cover[r];
+              if (!unionMap[rr]) { unionMap[rr] = 1; union.push(rr); }
+            }
+          }
+          if (union.length !== size) continue;
+          elim = [];
+          for (cc = 0; cc < 9; cc++) {
+            inBase = false;
+            for (e = 0; e < combo.length; e++) if (combo[e].line === cc) inBase = true;
+            if (inBase) continue;
+            for (r = 0; r < union.length; r++) {
+              i = union[r] * 9 + cc;
+              if (!state.grid[i] && (state.cands[i] & bit)) elim.push({ index: i, digit: d });
+            }
+          }
+          if (elim.length) return { tech: tech, elim: elim, digit: d, house: 'col' };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findXYWing(state) {
+    var bi = [];
+    var i, p, a, b, xy, xz, yz, z, zd, elim, t;
+    for (i = 0; i < 81; i++) {
+      if (!state.grid[i] && popcount(state.cands[i]) === 2) bi.push(i);
+    }
+    for (p = 0; p < bi.length; p++) {
+      xy = state.cands[bi[p]];
+      for (a = 0; a < PEERS[bi[p]].length; a++) {
+        i = PEERS[bi[p]][a];
+        if (state.grid[i] || popcount(state.cands[i]) !== 2) continue;
+        xz = state.cands[i];
+        if (popcount(xy & xz) !== 1 || popcount(xy | xz) !== 3) continue;
+        for (b = a + 1; b < PEERS[bi[p]].length; b++) {
+          t = PEERS[bi[p]][b];
+          if (state.grid[t] || popcount(state.cands[t]) !== 2) continue;
+          yz = state.cands[t];
+          if (popcount(xy | xz | yz) !== 3) continue;
+          z = xz & yz;
+          if (popcount(z) !== 1 || (z & xy)) continue;
+          if (popcount(xy & yz) !== 1) continue;
+          zd = digitOfMask(z);
+          elim = [];
+          for (var n = 0; n < 81; n++) {
+            if (state.grid[n] || n === i || n === t) continue;
+            if ((state.cands[n] & z) && SEE[n][i] && SEE[n][t]) {
+              elim.push({ index: n, digit: zd });
+            }
+          }
+          if (elim.length) {
+            return {
+              tech: 11,
+              elim: elim,
+              digit: zd,
+              digits: maskDigits(xy | xz | yz),
+              cells: [bi[p], i, t]
+            };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function findXYZWing(state) {
+    var tri = [];
+    var bi = [];
+    var p, a, b, i, t, xyz, xz, yz, z, zd, elim, n;
+    for (i = 0; i < 81; i++) {
+      if (state.grid[i]) continue;
+      var pc = popcount(state.cands[i]);
+      if (pc === 3) tri.push(i);
+      else if (pc === 2) bi.push(i);
+    }
+    for (p = 0; p < tri.length; p++) {
+      xyz = state.cands[tri[p]];
+      for (a = 0; a < PEERS[tri[p]].length; a++) {
+        i = PEERS[tri[p]][a];
+        if (state.grid[i] || popcount(state.cands[i]) !== 2) continue;
+        xz = state.cands[i];
+        if ((xz & xyz) !== xz) continue;
+        for (b = a + 1; b < PEERS[tri[p]].length; b++) {
+          t = PEERS[tri[p]][b];
+          if (state.grid[t] || popcount(state.cands[t]) !== 2) continue;
+          yz = state.cands[t];
+          if ((yz & xyz) !== yz) continue;
+          if ((xz | yz) !== xyz) continue;
+          z = xz & yz;
+          if (popcount(z) !== 1) continue;
+          zd = digitOfMask(z);
+          elim = [];
+          for (n = 0; n < 81; n++) {
+            if (state.grid[n] || n === tri[p] || n === i || n === t) continue;
+            if ((state.cands[n] & z) && SEE[n][tri[p]] && SEE[n][i] && SEE[n][t]) {
+              elim.push({ index: n, digit: zd });
+            }
+          }
+          if (elim.length) {
+            return {
+              tech: 12,
+              elim: elim,
+              digit: zd,
+              digits: maskDigits(xyz),
+              cells: [tri[p], i, t]
+            };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function easiest(state) {
+    return findHiddenSingle(state)
+      || findNakedSingle(state)
+      || findPointing(state)
+      || findClaiming(state)
+      || findNakedSubset(state, 2, 5)
+      || findHiddenSubset(state, 2, 6)
+      || findNakedSubset(state, 3, 7)
+      || findHiddenSubset(state, 3, 8)
+      || findFish(state, 2, 9)
+      || findFish(state, 3, 10)
+      || findXYWing(state)
+      || findXYZWing(state);
+  }
+
+  function applyStep(state, step) {
+    if (step.place) return place(state, step.place.index, step.place.digit);
+    return applyElim(state, step.elim);
+  }
+
+  /* Hardest technique required. -1 if this set cannot finish the puzzle.
+     If solution is passed, a placed digit that disagrees returns -1. */
+  function rate(src, solution) {
+    var state = initState(src);
+    var maxTech = 0;
+    var guard = 0;
+    var step;
+    if (!state) return -1;
+    while (guard++ < 500) {
+      if (isSolved(state.grid)) return maxTech;
+      step = easiest(state);
+      if (!step) return -1;
+      if (step.tech > maxTech) maxTech = step.tech;
+      if (step.place && solution && solution[step.place.index] && solution[step.place.index] !== step.place.digit) {
+        return -1;
+      }
+      if (!applyStep(state, step)) return -1;
+    }
+    return -1;
+  }
+
+  /* Next deduced cell from a consistent grid. Wrong user digits must already be cleared. */
+  function nextHint(src) {
+    var state = initState(src);
+    var maxTech = 0;
+    var cause = null;
+    var guard = 0;
+    var step;
+    if (!state) return null;
+    while (guard++ < 500) {
+      if (isSolved(state.grid)) return null;
+      step = easiest(state);
+      if (!step) return null;
+      if (step.tech >= maxTech) {
+        maxTech = step.tech;
+        cause = step;
+      }
+      if (step.place) {
+        return {
+          tech: maxTech,
+          index: step.place.index,
+          digit: step.place.digit,
+          info: {
+            tech: cause.tech,
+            digit: cause.digit || step.place.digit,
+            digits: cause.digits || null,
+            house: cause.house || null,
+            houseIndex: cause.houseIndex,
+            cells: cause.cells || null
+          }
+        };
+      }
+      if (!applyStep(state, step)) return null;
+    }
+    return null;
+  }
+
+  return { rate: rate, nextHint: nextHint };
+})();
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = SudokuTech;
+}
+
+var PUZZLES = {"beginner":[{"g":"260970000580003109300008025040001036930856041710300090490600002107500064000082017","s":"261975483584263179379148625845791236932856741716324598498617352127539864653482917"},{"g":"007850100104793820800060974400080532000000000356040001692010007013679208008025600","s":"927854163164793825835261974479186532281537496356942781692418357513679248748325619"},{"g":"200400005001096248498000000584132700000947000009568324000000592926350400700009006","s":"267483915351796248498215673584132769632947851179568324813674592926351487745829136"},{"g":"730906000000500800090427003821740056950060027670059138300872040002005000000604092","s":"735986214246531879198427563821743956953168427674259138319872645462395781587614392"},{"g":"260075084005008073080904025000457030300090001090316000620501040170200500530760012","s":"263175984945628173781934625816457239357892461492316758629581347178243596534769812"},{"g":"300040000820030107000090043643017258090385010518260379780020000902050084060070001","s":"379148562824536197156792843643917258297385416518264379781429635932651784465873921"},{"g":"000309001004157206001060009478010025503908607260040183800090300302871500100204000","s":"625389471984157236731462859478613925513928647269745183847596312392871564156234798"},{"g":"340891065690003710180700400050040000036000590009030080004007026078600051260915047","s":"347891265692453718185762439851249673436178592729536184514387926978624351263915847"},{"g":"725140600000005200081029573037400050802901706000002840273590480004800000008014360","s":"725143698369785214481629573937468152842951736156372849273596481614837925598214367"},{"g":"900102075062070908004000020240005790687010254090200083010000309406038510370401002","s":"938162475162574938754893126243685791687319254591247683815726349426938517379451862"},{"g":"700006000061000275000517840092153760030704020074962130018325000953000680000600001","s":"785246913461839275329517846892153764136784529574962138618325497953471682247698351"},{"g":"100004230002030000389502070450290813000748000628051047010803429000070300063400001","s":"176984235542637198389512674457296813931748562628351947715863429294175386863429751"},{"g":"007003069800401002200500810065704901408905207702108650021007008500809006680300700","s":"157283469836491572249576813365724981418965237792138654921657348573849126684312795"},{"g":"900086024000070006286004350039108040007649800050703690018500263700060000560830009","s":"975386124341275986286914357639158742127649835854723691418597263793462518562831479"},{"g":"080902734017500006300600105203006400640030079005400603102004007400009360769305040","s":"586912734917543286324687195293756418641238579875491623132864957458179362769325841"},{"g":"530609417170380006006500003309200100007903600001007004700005300800032061613708045","s":"538629417172384596946571823359246178487913652261857934724165389895432761613798245"},{"g":"100000060802050710056901482685710040300000008070080256968103520014690807030000001","s":"143827965892456713756931482685712349329564178471389256968173524214695837537248691"},{"g":"041620008800047203072300004790208006003000900500703041600801420207560009400072610","s":"341629758865147293972385164794218536183456972526793841659831427217564389438972615"},{"g":"054007800000405739897610000000059200503064108008130000000041327435208006001300580","s":"354927861162485739897613452716859243523764198948132675689541327435278916271396584"},{"g":"730400160040075000002630507027090605084000320109050870203067400006240050071003096","s":"735429168648175932912638547327894615584716329169352874253967481896241753471583296"},{"g":"301500024007120683048000050893000006025007940400000312030000290712093800580002407","s":"361589724957124683248736159893241576125367948476958312634875291712493865589612437"},{"g":"108609704300100852070830010702500600051000390009003501010068070067005009905407203","s":"128659734396174852574832916732591648851246397649783521213968475467325189985417263"},{"g":"560009000080026000700805261904001020130482097020900105249108306800230010000600082","s":"562719438481326759793845261974561823135482697628973145249158376856237914317694582"},{"g":"006000009740080250023100807070094100394618725008750030509006470082070093100000500","s":"856247319741983256923165847275394168394618725618752934539826471482571693167439582"},{"g":"080712403001609052094300600400800329000020000328005007003006780870500200602187034","s":"586712493731649852294358671465871329917423568328965147143296785879534216652187934"},{"g":"027310900586042103190000042300000069700109008860000001930000014604520897008091530","s":"427316985586942173193857642351284769742169358869735421935678214614523897278491536"},{"g":"500100862026034950100652400007020006800567004400090700004285009089710540610003008","s":"543179862726834951198652437957421386832567194461398725374285619289716543615943278"},{"g":"001090274050006000028070536002000907783459162106000300635012490000800050814060700","s":"361598274457326819928174536542631987783459162196287345635712498279843651814965723"},{"g":"805200904000034010403001270049750102030402060208016740092300607080670000306005408","s":"815267934927534816463891275649753182731482569258916743192348657584679321376125498"},{"g":"610400705503090260402000009000015347140203056356940000200000601061070403704009082","s":"619428735583791264472356819928615347147283956356947128295834671861572493734169582"},{"g":"001278053025094000678531009060010030000020000030050080700162598080940320950087400","s":"491278653325694871678531249564819732817423965239756184743162598186945327952387416"},{"g":"007209140490608000182004906504003700003000200008490503306100829800907035059306400","s":"637259148495618372182734956524863791963571284718492563376145829841927635259386417"},{"g":"000450001004706923062380457405060070000000000020047105591074830276108500300025000","s":"739452681854716923162389457485261379617593248923847165591674832276138594348925716"},{"g":"003064052629050340400201900500720000108000607000089005001602004047015269960470500","s":"713964852629857341485231976534726198198543627276189435351692784847315269962478513"},{"g":"500004827760023045100800300046030081005401600970080530009002003610340059352100008","s":"593614827768923145124857396246735981835491672971286534489562713617348259352179468"},{"g":"007065092021300486908140530800090043000000200310000005083014709794008360150930800","s":"437865192521379486968142537875291643649753218312486975283614759794528361156937824"},{"g":"070009280008470000150863047007026300260384071005910800090648052000095400084200060","s":"476159283938472615152863947817526394269384571345917826793648152621795438584231769"},{"g":"013078420096020008000130567945000001001706900600000384157062000800090210039850740","s":"513678429796524138428139567945283671381746952672915384157462893864397215239851746"},{"g":"906072000040139800170406090800697054020000060650324000060201038004783010000960407","s":"936872541542139876178456392813697254429518763657324189765241938294783615381965427"},{"g":"796021380500708060380600040208106900100000008005802607050007032020304006013260874","s":"796421385541738269382659741278146953169573428435892617654987132827314596913265874"}],"easy":[{"g":"200000000040600170000034600800057230300802001090010008009580040078200090000000000","s":"263175984945628173781934625816457239357892461492316758629581347178243596534769812"},{"g":"347000065690003700000000000001200603030078090009000180010000000000620001000000847","s":"347891265692453718185762439851249673436178592729536184514387926978624351263915847"},{"g":"700000000061000005000010840002003700000704000070900130008320000950000680000600001","s":"785246913461839275329517846892153764136784529574962138618325497953471682247698351"},{"g":"000200060006400502000070003000700081010060030790108000900650000503009100080002000","s":"157283469836491572249576813365724981418965237792138654921657348573849126684312795"},{"g":"000010700010500000020680000203000410001000500075090603030064057400000060009300000","s":"586912734917543286324687195293756418641238579875491623132864957458179362769325841"},{"g":"500009017170080006006000003009200100000903000001007004700005300800000061010700005","s":"538629417172384596946571823359246178487913652261857934724165389895432761613798245"},{"g":"001000008800040000072300004790008006003000900000700000600801020200500009400070600","s":"341629758865147293972385164794218536183456972526793841659831427217564389438972615"},{"g":"050007000000405039097010000000009000500064108008130000000000020400200006001300080","s":"354927861162485739897613452716859243523764198948132675689541327435278916271396584"},{"g":"000609700000100052070830000702500600001000090000003500010008070060000009005407200","s":"128659734396174852574832916732591648851246397649783521213968475467325189985417263"},{"g":"500100860006034900100600000007000006800560004400000700000005000009710000010003008","s":"543179862726834951198652437957421386832567194461398725374285619289716543615943278"},{"g":"800200904000000010003000200049050100030402060200010700002300007080670000000005008","s":"815267934927534816463891275649753182731482569258916743192348657584679321376125498"},{"g":"610400000503090260400000009000010300000203050006040000200000601061070403000009002","s":"619428735583791264472356819928615347147283956356947128295834671861572493734169582"},{"g":"007009140090008000002000906504000000000000200000090503006100820800907030059300000","s":"637259148495618372182734956524863791963571284718492563376145829841927635259386417"},{"g":"000060052009800000480030000504000198100000007276000405000090080000005200060400000","s":"713964852629857341485231976534726198198543627276189435351692784847315269962478513"},{"g":"006072000000000800170406000800600050020000000050324000060001030004780010000900007","s":"936872541542139876178456392813697254429518763657324189765241938294783615381965427"},{"g":"000006305000000000500938010086004000001080200009500860000769001003000000104020700","s":"918476325367152948542938617786294153451683279239517864825769431673841592194325786"},{"g":"010000300007803004403070100000100500002000890039005000005040903300500200201000070","s":"816954327927813654453276189748129536562437891139685742685742913374591268291368475"},{"g":"035040001040060000167900005050004000400000902070200040000007134006080000700050690","s":"935748261842561379167932485253894716481376952679215843598627134316489527724153698"},{"g":"100000060000000000002600903050342090900007006014906080601005800030080000208000007","s":"147539268369128475582674913856342791923817546714956382671295834435781629298463157"},{"g":"082090500000004000010580300090403076000010000300806050000008090150700030009060000","s":"482391567573624819916587324891453276765912483324876951647238195158749632239165748"},{"g":"000002009006098200005000600002510730000040000059030800003000400020360500400780000","s":"384652179716498253295173684842519736137846925659237841573921468928364517461785392"},{"g":"000000400000400500000010003098023006000090000601780300400030000927000008003002010","s":"179358462362479581845216973798523146234691857651784329416837295927145638583962714"},{"g":"290080016305000900000000080908300000050002090000096803004600000001000200000027045","s":"297584316385761924416239587948315762653872491172496853724658139561943278839127645"},{"g":"000971000010000007000050020080500200400000000205089064060040000800000043090063052","s":"528971436316428597947356821681534279479612385235789164763245918852197643194863752"},{"g":"000400000900000580000600090500030004320904060700060002070208000069000201000300000","s":"635489127947123586218675493586732914321954768794861352173298645869547231452316879"},{"g":"002096000050000604603002001000000300080003000200060010700900406008000530000520000","s":"412896753859317624673452891561289347987143265234765918725931486198674532346528179"},{"g":"072030060000010000901700000008000005000050703700000200000001008400860300030490170","s":"572934861643518927981726534398247615124659783756183249269371458417865392835492176"},{"g":"800000000610090002704006030000230009062007010300040000080000506400000021000004070","s":"825413697613798452794526138548231769962857314371649285189372546437965821256184973"},{"g":"004200083000000000090817046070023000800000300000760090040952070000400000060000850","s":"614295783785634129293817546579123468826549317431768295348952671157486932962371854"},{"g":"003020000010004073000801400970000040000500000320000095007005000580200010090046500","s":"453927186819654273762831459975362841148579362326418795637185924584293617291746538"},{"g":"070050103006000800080302000439000002000000000200000540000704010041080700700001050","s":"974856123326149875185372964439517682567428391218963547853794216641285739792631458"},{"g":"000801270200005060700900000001380600000000030000042900306008052050000007070503000","s":"465831279219475863783926541591387624624159738837642915346798152158264397972513486"},{"g":"000000508007204000090000006060179000008405300000683020800000050020900100401000000","s":"246391578587264913193857246362179485718425369954683721839712654625948137471536892"},{"g":"005030206000000004000020000000009103001000460732600080000080000900000005804007300","s":"475938216289165734316724958648259173591873462732641589153482697927316845864597321"},{"g":"908200300020081000051000000005000480000000000349068200000000140000150008002009506","s":"978245361623981754451673892165392487287514639349768215596827143734156928812439576"},{"g":"897050001000003807200700000003041020000000000024930000000000006109470000000060714","s":"897654231645123897231798465783541629916287543524936178478312956169475382352869714"},{"g":"050000009002005030008100000106800000000000040000000500300000400010200600900040027","s":"751436289692785134438129765146853972579612348283974516327568491814297653965341827"},{"g":"000000013000200000014000000407900001080103075300006908000009586008001000560000009","s":"295684713736215894814397652427958361689123475351746928172439586948561237563872149"},{"g":"005608000290000007070000051400090000602004008000010005060000002300001089020700000","s":"135678924294135867876942351453897216612354798789216435961483572347521689528769143"},{"g":"000040105000085079000000008030500801000070090002006000480007006010850000205009000","s":"928743165341685279567921438736592841154378692892416753489237516613854927275169384"}],"medium":[{"g":"007850000000700020000000904400080032000000000356000001600000000013079000008020600","s":"927854163164793825835261974479186532281537496356942781692418357513679248748325619"},{"g":"000002000102500930050000100040605000080019000001207080000000040426008507300000002","s":"938162475162574938754893126243685791687319254591247683815726349426938517379451862"},{"g":"500629007002004000940500003009000100000003002061000900700005089000400700600798000","s":"538629417172384596946571823359246178487913652261857934724165389895432761613798245"},{"g":"301500004000020680000000000093000006005007900400000310000000090012093800500002007","s":"361589724957124683248736159893241576125367948476958312634875291712493865589612437"},{"g":"009008700503000204000006010920600040000000000000007028095800001001000003704000500","s":"619428735583791264472356819928615347147283956356947128295834671861572493734169582"},{"g":"000000001000700923062380000405060070000000000020047105090004800076108000300020000","s":"739452681854716923162389457485261379617593248923847165591674832276138594348925716"},{"g":"000060052009800000480030000500000190100000007276000405000090080000005200060400000","s":"713964852629857341485231976534726198198543627276189435351692784847315269962478513"},{"g":"706021000000708060300600040200006900100000008005800007050007002020300000000260004","s":"796421385541738269382659741278146953169573428435892617654987132827314596913265874"},{"g":"010000300007803004403070100000100500002000890039005000005040903300500000201000070","s":"816954327927813654453276189748129536562437891139685742685742913374591268291368475"},{"g":"035040001040060000107900005050004000400000902070200040000007104006080000700050690","s":"935748261842561379167932485253894716481376952679215843598627134316489527724153698"},{"g":"000000000570000809000507320091400270000010000024006950040200095108040030000000000","s":"482391567573624819916587324891453276765912483324876951647238195158749632239165748"},{"g":"000000000476000000801200930003000050004930806080000100042005708000400019700800000","s":"239758641476193285851246937193687452524931876687524193942315768368472519715869324"},{"g":"000050076010002000002000030108020049000704000970010603000000300060100080840000105","s":"439851276716932854582647931158326749623794518974518623291485367365179482847263195"},{"g":"004000007090020000000050203000010690000006002009075000906030000010040000520000801","s":"234681957195327486678954213752813694381496572469275138946138725817542369523769841"},{"g":"000080006305001920400030080008010060000002090070090800020050130061000008800020000","s":"297584316385761924416239587948315762653872491172496853724658139561943278839127645"},{"g":"000020500092050000040800030600000170080040060000090005000005018000070092007001000","s":"718623549392754681546819237659382174281547963473196825934265718165478392827931456"},{"g":"000070095000000700000260003400005000070010080009700304080003000053020800120090000","s":"842371695631549728597268413468935172375412986219786354784153269953627841126894537"},{"g":"070004001043000900000000004098000005004009700706000240200001000007800392800400070","s":"572934861643518927981726534398247615124659783756183249269371458417865392835492176"},{"g":"004095003700600020003000006509003000020509010000700205300000600050006002060070800","s":"614295783785634129293817546579123468826549317431768295348952671157486932962371854"},{"g":"070050103006000800080302000439000002000000000200000540000004000041080700700001050","s":"974856123326149875185372964439517682567428391218963547853794216641285739792631458"},{"g":"240090500000200000090000046300109080008000300000600001800000600020000030401030090","s":"246391578587264913193857246362179485718425369954683721839712654625948137471536892"},{"g":"000000013000200000014000000407900001080003075300006908000009586008001000560000009","s":"295684713736215894814397652427958361689123475351746928172439586948561237563872149"},{"g":"009000107004009000200108000035000400000702060006000758070500602000420500500000800","s":"369245187184679235257138946735896421841752369926314758473581692698427513512963874"},{"g":"040000168008490000750000000000002830800030009073000050000203081000059600015000090","s":"249375168638491725751826943594612837826537419173984256967243581382159674415768392"},{"g":"709300210802000000030007000003105004001000600500809000000000060000000403026003907","s":"749386215812594376635217849283165794491732658567849132374928561958671423126453987"},{"g":"180200000906010070000700500400000030000304005060002000004009000090000608020000010","s":"187235469956418372243796581472951836819364725365872194634189257791523648528647913"},{"g":"000070509106009000000000003000840900010306040002091300700010800050000407000020000","s":"423178569186539724579264183635842971917356248842791356764915832251683497398427615"},{"g":"000010009000698000400000800060000002010000060580300010002040007000921050800050000","s":"638214579725698143491537826964175382213489765587362914152843697376921458849756231"},{"g":"029075006050800003000060000800000090000703000040000005270010009100008060900530140","s":"329175486651824973487369251813652794592743618746981325275416839134298567968537142"},{"g":"080000000000100790400200800000900430000060020035004006051003067709002000000500040","s":"183749652526138794497256813612975438874361529935824176251483967749612385368597241"},{"g":"007000590002000006100083027000090600670000030005010000520140009800000300040008200","s":"487261593932475186156983427318794652674852931295316748523147869861529374749638215"},{"g":"090010060000000900100040308003600071000008000600005800910030005005700089060000000","s":"598213764374586912126947358283694571751328496649175823917832645435761289862459137"},{"g":"080400000900710500760000000100037050800000007490500006000100060000080005000003080","s":"581492673932716548764358291126837459853649127497521836348175962679284315215963784"},{"g":"001000000600470301050006092070009108300000007906100000100740020502000006000000400","s":"721953684698472351453816792274569138315284967986137245169748523542391876837625419"},{"g":"921000003800000040050010602000005004003009200200340000106080090090600001000000760","s":"921764583867532149354918672679125834413879256285346917146287395798653421532491768"},{"g":"000002300000040018050080290604800000009060700000007804006130080390070000008900000","s":"987512346263749518451386297674853129829461735135297864746135982392678451518924673"},{"g":"637240000024003000800000000205000060000000000170800504006000908400600350000039040","s":"637248195524913687819765432245371869968452713173896524356124978492687351781539246"},{"g":"000007900000000300071500082000003500000105070902804000460009700008000000009700000","s":"524387961896412357371596482187963524643125879952874136465239718738641295219758643"},{"g":"000040000700003284000000607607080002005070400300090800209000708408900005000030000","s":"852746319796513284143829657617384592985172463324695871269451738438967125571238946"},{"g":"003690042010000050040300000502700004000040000400006800009000060020000000670029103","s":"853691742916274358247385691562738914798142536431956827389417265125863479674529183"}],"hard":[{"g":"200400005001006008098000000500002700000907000000000304000000500900350400700009006","s":"267483915351796248498215673584132769632947851179568324813674592926351487745829136"},{"g":"060058010000000004970000000700084500300600000008730006000000060400000900010879020","s":"264358719831297654975146382726984531359612847148735296597423168482561973613879425"},{"g":"090007400200300700704050360000100900000000000009060080002040105003021004007000000","s":"398617452265394718714852369826175943531489627479263581982746135653921874147538296"},{"g":"000000040500920860900086053200000100010709000009000006390500004050063007027000000","s":"861357942573924861942186753235648179416739528789215436398572614154863297627491385"},{"g":"000000005800100004900300000304006000002403600090800307005001000400700008010200000","s":"241968735863157924957324816374596281182473659596812347735681492429735168618249573"},{"g":"002000000100074009097000060076500903000020000013000650000390420900480006000000100","s":"352169784168274539497835261276518943549623817813947652781396425925481376634752198"},{"g":"000070000083400100201005070000008907820000001900300005070904003008002510010080000","s":"456173298783429156291865374134258967825697431967341825572914683648732519319586742"},{"g":"000007900000090020009080304100900060000050003072006000406070200090560400005100006","s":"641237958387495621529681374153948762964752183872316549416879235298563417735124896"},{"g":"060090340000500910000000085051060800200040100004000260310008000082070000040020000","s":"568197342473582916129436785751263894236849157894715263317658429682974531945321678"},{"g":"300000005600010730080500009700003100050900040000800003060000020042080006000000004","s":"374296815695418732281537469729643158853921647416875293968754321142389576537162984"},{"g":"006000100090000800710030090070320080004010500030064000080090061001002040009000700","s":"846957123593241876712836495175329684624718539938564217287495361351672948469183752"},{"g":"000004050080902400009000002010400068000710000400096003800000100005869040063000000","s":"231674859687952431549381672712435968396718524458296713874523196125869347963147285"},{"g":"000000000086007301500003200000009070020678010090100000060900000702000940050030600","s":"213586794486297351579413268148329576325678419697145823864952137732861945951734682"},{"g":"010009304003000006000004000600097403900000201305460700000100020100000605509000000","s":"218659374493872516756314892681297453947583261325461789864135927172948635539726148"},{"g":"900700000200000608400006029050000000000108030006050080570400100109000000000007005","s":"965782341237941658481536729854379216792168534316254987578493162149625873623817495"},{"g":"000700810204000300080000400000409000007160900000307000018000630006000704093004050","s":"935742816274816395681593427862459173357168942149327568418275639526931784793684251"},{"g":"780100004003000007450009000020006000108004002000900080000630041200008000800097023","s":"782163954913845267456279138325786419198354672647921385579632841234518796861497523"},{"g":"003500000806012004002090000300009200009020100000400009090060001407850006000000300","s":"973548612856312794142796538364189257789625143215437869598263471437851926621974385"},{"g":"000050320000702008050103700120000060040500080790000015004000000010309000030240000","s":"971854326463792158852163794125978463346521987798436215284617539517389642639245871"},{"g":"201090300000000004900000100503079000076004030000050201050000000600000003309620708","s":"261497385735812694984563127523179846176284539498356271857931462612748953349625718"},{"g":"450090000010040060000000007005006039004010700030900050800000003009000070000080945","s":"456897321917243568328561497785426139294315786631978254842759613569134872173682945"},{"g":"047001050309060007600000030000704002000080000700106400050000800800010003000900600","s":"247831956389265147615479238568794312421583769793126485956347821874612593132958674"},{"g":"070600010800004000030800000905406800008090600000708405000005040001300007050100020","s":"479653218816274359532819764925436871748591632163728495287965143691342587354187926"},{"g":"000400010007000802600020004006083420803090600004650700500040000100000300008007000","s":"285476913497531862631829574756183429823794651914652738572348196149265387368917245"},{"g":"200004000001000900430050700000806000003000400100032080006081057002060001000200009","s":"269374518751628934438159726524896173683715492197432685346981257972563841815247369"},{"g":"700050600092000000003000870000230060029010030040090007051007300000005040007040001","s":"784951623692873154513462879175234968829716435346598217451687392938125746267349581"},{"g":"670005000030097000002000000000000000018000700900300100090006400000850070500740806","s":"679285314135497268482613597743521689218964753956378142897136425364852971521749836"},{"g":"100000004000002900906140000008030040004000305030054000000010702003206009810090003","s":"185379624347562918926148537598637241764821395231954876659413782473286159812795463"},{"g":"020078000800052730605000000001200500000000000008013600400000307052800009000760050","s":"324678915819452736675391428961287543237546891548913672496125387752834169183769254"},{"g":"001000700760300008095200006000000001000052000300000600100006980940003060003095100","s":"231568794764319258895274316586937421417652839329481675152746983948123567673895142"},{"g":"006200000000804020020000073701080009005000000900010345460000030000005004003002100","s":"196237458357894621824651973741583269635429817982716345469178532218365794573942186"},{"g":"000000090200000001140080600009005807000200005001600400000060004500000970900120000","s":"365741298298356741147982653629415837473298165851673429782569314516834972934127586"},{"g":"300100002000800730600503090090000076003000900210000080080070409004005000500008010","s":"358197642941826735672543198495281376863754921217639584186372459724915863539468217"},{"g":"000080030006007200900102040600521070003090600010763005060409002001200400040050000","s":"124685937536947218978132546689521374753894621412763895365419782891276453247358169"},{"g":"023001006000000100058000900030004600040805310007200050000100290080400000000900068","s":"423591786796382145158647932835714629942865317617239854564178293389426571271953468"},{"g":"703000950000079000208004600000280307300000006001000000007500200000740000050800793","s":"713628954546179832298354671469285317325917486871436529637591248982743165154862793"},{"g":"700406009200350000000007000000600400609000213080002000000800000020004080300105006","s":"735486129296351874814297635172639458659748213483512967961873542527964381348125796"},{"g":"000092000006100270400300109000000600009406003104200000045007006020004300000000000","s":"718692534936145278452378169283759641579416823164283795345827916821964357697531482"},{"g":"000009020300070810020830050700400060009000100030000005015087000090040007080900040","s":"578169423346572819921834756752413968869725134134698275415387692693241587287956341"},{"g":"070009040100006702000000300000600000004900800000007605000000000708300000920480060","s":"375829146149536782682174359597618423264953871831247695416795238758362914923481567"}],"expert":[{"g":"260070004005008003080904000000057030000000000090306000600500040100200500500000012","s":"263175984945628173781934625816457239357892461492316758629581347178243596534769812"},{"g":"000003060800001002200500010060004000408000207000100050021007008500809006000300700","s":"157283469836491572249576813365724981418965237792138654921657348573849126684312795"},{"g":"500000017170080006006000000009200100000903000000007004700005300800000061010700005","s":"538629417172384596946571823359246178487913652261857934724165389895432761613798245"},{"g":"500000827760020040000800000000030001005401600970080000000002000000340009052100008","s":"593614827768923145124857396246735981835491672971286534489562713617348259352179468"},{"g":"005000470260000000090310000000020030100904000050071000000067005000000086034000000","s":"315286479268749513497315862749528631126934758853671924982167345571493286634852197"},{"g":"000002000400080310000090400090706050056904100000108900060019000240000003000800000","s":"913472586427685319685391472194736258856924137732158964368219745241567893579843621"},{"g":"020030060006092001410000000500008000061050870000400003000600018600500700070000050","s":"827134965356792481419865237543978126961253874782416593295647318638521749174389652"},{"g":"040000168008090000750000000000002830800030009073000050000203081000059600015000090","s":"249375168638491725751826943594612837826537419173984256967243581382159674415768392"},{"g":"080709600020000000400056000000970008070000020930024000001483007000010000000507040","s":"183749652526138794497256813612975438874361529935824176251483967749612385368597241"},{"g":"040907003020601000070020000600700100054000070000083000000060000003004090700500010","s":"841957263329641785576328941638795124954216378217483659495162837163874592782539416"},{"g":"000003000000060000106050023070000015083000760050600030400010002000890000300700000","s":"542183697837269154196457823674938215283541769951672438468315972725896341319724586"},{"g":"090800000780050400002900108070009000530000000000400060200004010004010027000097005","s":"195846273783152496642973158471689532536721984829435761257364819964518327318297645"},{"g":"200501008500000090000006140090000000084100650000000030010960000070000063000703509","s":"269541378541837296738296145692354781384179652157628934813965427975412863426783519"},{"g":"700500000200713480009060001000007000000302000040100520460070000000631004000000037","s":"714589362256713489839264751621857943985342176347196528463978215572631894198425637"},{"g":"020030400000200008908710020009100500000009000005007160040082901300000040007000000","s":"721638495463295718958714623279163584614859237835427169546382971392571846187946352"},{"g":"004205000290740600600000000040000583800000009573000000000090804000013090000807000","s":"384265917295741638617938425946172583821354769573689142132596874758413296469827351"},{"g":"000006100000700000000053402000000000730000629400000310907160003002007500105800000","s":"593246178624781935871953462216379854738514629459628317987165243362497581145832796"},{"g":"000000002000001800000300050070109040040602080050804130100063009002500000600000300","s":"713985462564721893928346751876139245341652987259874136187463529432597618695218374"},{"g":"000000500002006000900275003000107060030040090819003000700061002040300100005000000","s":"378914526452836719961275843524197368637548291819623475783461952246359187195782634"},{"g":"100400900800610000043000010004008000391000050000970400000000280000896000030001005","s":"156437928879612534243589716764158392391264857582973461617345289425896173938721645"},{"g":"016000300000028000000000041307006410080040000041000578069000050000070064008000100","s":"516497382734128695892653741327586419985741236641239578269314857153872964478965123"},{"g":"078040020000009307003800000580000602020060050700000001000097000907500004000031900","s":"178346529654129387293875416589713642421968753736254891315497268967582134842631975"},{"g":"307000090000650007008007000800900200009020100002006070000200540450060002000000603","s":"367142895914658327528397461875914236649723158132586974786231549453869712291475683"},{"g":"300800000000030057000012003020980004081000290900070030000390040140025000000000002","s":"356847129218639457497512683523986714781453296964271835672398541149725368835164972"},{"g":"400000032000009600000250000320040107080000040104020095000038000005600008070001000","s":"498167532251389674736254981329845167587916243164723895612438759945672318873591426"},{"g":"000000002826000003000600005040802000000305007100407020000003000490200530050000109","s":"574139862826574913913628745749862351268315497135497628681953274497281536352746189"},{"g":"001060300000002500009500040030005000000070000000208070500009400607000980008040000","s":"451967328376482591289513746732695814865174239194238675513829467647351982928746153"},{"g":"004001700700020090003800002000100905060000030502000000400090800078010006026300000","s":"254961783781523694693847152347182965869754231512639478435296817978415326126378549"},{"g":"080002130219004006400000000700000000000803690004009005000000008100300502050008060","s":"687952134219734856435681279793265481521843697864179325346527918178396542952418763"},{"g":"000701050003800000057000300000000980700000061090002000006009832008000670030000000","s":"829731456463825197157946328342167985785394261691582743576419832918253674234678519"},{"g":"570000000000203001000500260003009600000408000007605300024006500950004100000000030","s":"572861493689243751431597268143729685265438917897615342324186579958374126716952834"},{"g":"001000703300400029009308001700004950600090000014605000800201600070003005000000200","s":"461529783387416529529378461732184956658792314914635872893251647276843195145967238"},{"g":"600200050000095600520000070050900700004000180002016040010000000008500400030004006","s":"641237958387495621529681374153948762964752183872316549416879235298563417735124896"},{"g":"000700100050080004000400000200063050070000010000200009000001200300090060508006700","s":"489735126751682934623419578294163857876954312135278649967541283312897465548326791"},{"g":"070000002001860400004000070600900001300070064507016000000009080002030100103000000","s":"876594312231867459954321876648953721319278564527416938765149283482635197193782645"},{"g":"012300600006009001000007030607500000000200003500000008070900000000600400003002050","s":"712345689356829741498167235637581924841296573529734168274958316185673492963412857"},{"g":"007504000540000000100000800090008371008030400705400080001000000000009046002103000","s":"387514629546892713129376854694258371218937465735461982971645238853729146462183597"},{"g":"000020300000001000260400007900000004008000500700000006620080070030900000075010029","s":"597826341483791265261435987916258734348167592752349816629584173134972658875613429"},{"g":"000000000080600004600420917040000005800302090900700080361007008200003070000000000","s":"429571863187639254653428917742986135815342796936715482361297548294853671578164329"},{"g":"006830570500000030000000200310640000000000007000029053002000040087400001093010800","s":"246831579579264138831975264315647982924583617768129453152398746687452391493716825"}],"master":[{"g":"054070020000400160008009000000002008007000500400100003000905300790003000000060940","s":"354671829972438165618529734563792418127384596489156273246915387791843652835267941"},{"g":"000000002000001800000300050070109040040002080050004130100063009002500000600000300","s":"713985462564721893928346751876139245341652987259874136187463529432597618695218374"},{"g":"062003080400020009800000007000030900005214000000060000100000008320080601070100390","s":"562973184417628539893451267746835912935214876281769453154396728329587641678142395"},{"g":"067002010000007820000040000051003600300706000000500390000000000020910050080600040","s":"967852413145367829238149567851493672394726185672581394516274938423918756789635241"},{"g":"000100000408000706106050000700010030001508000024090001000704300600300008000000040","s":"273146589458239716196857423789412635361578294524693871915784362647321958832965147"},{"g":"090102840000030710000500000000000207500006009908000000000070000061050000003409021","s":"397162845645938712812547396136894257574326189928715463289671534461253978753489621"},{"g":"000623000900100800001050270000010000003000710080000000094030080008005006000007000","s":"857623491932174865461958273579312648243586719186749352694231587728495136315867924"},{"g":"685000907900002000000000080000038054060050010800410000040000000310080000000070306","s":"685143927971862435432795681129638754764259813853417269547326198316984572298571346"},{"g":"009000000500400100080906004408000306000009000302000958700008010006000005000300800","s":"149583762563427189287916534498152376675839421312674958754298613836741295921365847"},{"g":"002700300060050200908000007000102000000904000230000000400000605009078040006400900","s":"152746389763859214948321567897132456615984732234567891481293675529678143376415928"},{"g":"000000704089004030060010000000100602001006900028073000070000060810700000203000000","s":"135698724789524136462317598397145682541286973628973451974831265816752349253469817"},{"g":"050000800000000509900030067100000000039080000600740005710050034000007000000002010","s":"257169843361874529984235167175923486439586271628741395712658934893417652546392718"},{"g":"000080030006007200900102040600501070003090600010703005060009002001000400040050000","s":"124685937536947218978132546689521374753894621412763895365419782891276453247358169"},{"g":"054000000080000900000074308200300000010000090000082007002140000031800560000090700","s":"654938172783251946129674358267319485418765293395482617572146839931827564846593721"},{"g":"900004180008000900000920040070500008090030060200000000160047000000050800087006000","s":"932674185648315927715928643371562498894731562256489731163847259429153876587296314"},{"g":"074000020000304100000020700010008060002000800040100090008060000009501000630000410","s":"974816523265374189381925746513798264792643851846152397158467932429531678637289415"},{"g":"402180009000000200306500400600200000000000300005003001008902005001800000900070602","s":"472186539519734268386529417693217854127458396845693721738962145261845973954371682"},{"g":"200040000005003420003072010080000601000080000309000050000400000017300900008910006","s":"291845763765193428843672519584239671176584392329761854932456187617328945458917236"},{"g":"800206700000050001001004200490000300060000000003000428002300500300040000050600009","s":"845216793729853641631794285497128356268435917513967428972381564386549172154672839"},{"g":"030000500000900003000840000000780000062000380010065700005078002600001000007000430","s":"934217568871956243256843971593782614762194385418365729345678192629431857187529436"},{"g":"800090030030402509602000000040000700700104003003800060000600305001500090000000007","s":"854791632137462589692358471245936718786124953913875264478619325321547896569283147"},{"g":"000200000004098035000000400007000000280000079000005003003000600060980500900750000","s":"536247981124698735879531462347129856285364179691875243753412698462983517918756324"},{"g":"000700030000008102010005600187000000600000009002300807003200040701600000040001000","s":"528716934476938152319425678187592463634187529952364817863259741791643285245871396"},{"g":"000032005904000010320006000007018000080000000600300700000004078036000500800900100","s":"718432695964587213325196847547218936283769451691345782159624378436871529872953164"},{"g":"085407000000000050473000010006014000000702000700690002050000203000000000020001490","s":"185467329962138754473925618296514837534782961718693542651849273349276185827351496"},{"g":"804000000000310400900700003010408005000050000600270000102003908000009000000060501","s":"834692157726315489951784263217438695483956712695271834162543978578129346349867521"},{"g":"000803007200000613000002800001000005054108260800000300005700000702000000600901000","s":"546813927289457613173692854961234785354178269827569341495726138712385496638941572"},{"g":"000036400000000079008000001400682000000000000060574003930000000187900600000200800","s":"519736428346128579728459361493682715875391246261574983932867154187945632654213897"},{"g":"000000091000690705070004000760010000900000002040085019000400050305020000610000000","s":"486257391132698745579134286768912534951346872243785619827469153395821467614573928"},{"g":"008000004000000030000028067050410000000000070009002018180230000200000005600700140","s":"978163254526974831341528967853417629412896573769352418184235796297641385635789142"},{"g":"003008000600070002001000600000780009208004307900060801006000500500043900000900000","s":"423618795689475132751239684365781429218594367947362851896127543572843916134956278"},{"g":"050300410001076000000000000005080004062000350300090000000000200030108600078005040","s":"657329418981476532423851796795683124862714359314592867546937281239148675178265943"},{"g":"000430000870000020009200500000004107408000300200350000000008700600000004005000800","s":"152437689876195423349286571593824167418769352267351948924618735681573294735942816"},{"g":"017000000000600000200098003030071005809000406004900070300000098000003000700010500","s":"517324869983657241246198753632471985879532416154986372321745698495863127768219534"},{"g":"030002000000108093809004001082901007000000002000300040100000500620009000900070020","s":"731692485264158793859734261482961357397485612516327948178246539623519874945873126"},{"g":"000000002000300790600020305004005010200608509050200030409000006000084000710000000","s":"375891462842356791691427385964735218237618549158249637489573126526184973713962854"},{"g":"001809047400300005000000002280001300000090000007400010000000070000008401610204900","s":"531829647472316895896547132289751364154693728367482519948135276723968451615274983"},{"g":"000008100002053806150000000040002000030070012007900030000000007600710500009800000","s":"376298154492153876158647293941532768835476912267981435514329687683714529729865341"},{"g":"005010000208500040700600000300020000000000570600040008000004001010903605000050200","s":"935412867268537149741698352389725416124869573657341928596284731412973685873156294"},{"g":"604000900700000800210004070020071000400000000009260000000100035005000007030020409","s":"654738912793612854218954376326471598471895263589263741942187635865349127137526489"}]};
+/* Kindle Sudoku UI. ES5, no network, no timers that repaint. */
+(function () {
+  'use strict';
+
+  if (!Date.now) {
+    Date.now = function () { return new Date().getTime(); };
+  }
+
+  var KEY = 'kindleSudoku.v1';
+  var LEVEL_IDS = ['beginner', 'easy', 'medium', 'hard', 'expert', 'master'];
+  var STR = {
+    tr: {
+      title: 'Sudoku',
+      newGame: 'Yeni oyun',
+      cont: 'Devam et',
+      stats: 'İstatistik',
+      language: 'Dil',
+      refresh: 'Ekranı tazele',
+      confOn: 'Çakışma: açık',
+      confOff: 'Çakışma: kapalı',
+      who: 'Oyuncu adı',
+      add: 'Bu adla devam et',
+      pick: 'Kayıtlı oyuncular',
+      back: 'Geri',
+      needName: 'Oyuna başlamadan önce bir ad yazın.',
+      noPlayers: 'Henüz oyuncu yok.',
+      replace: 'Yarıda kalan oyun, yeni oyunun yerini alır.',
+      notes: 'Not',
+      notesOn: 'Not açık',
+      erase: 'Sil',
+      undo: 'Geri al',
+      hint: 'İpucu',
+      menu: 'Menü',
+      mistakes: 'Hata',
+      hints: 'İpucu',
+      completed: 'Biten',
+      best: 'En iyi',
+      none: '—',
+      done: 'Tamamlandı',
+      again: 'Yeni oyun',
+      home: 'Ana sayfa',
+      changePlayer: 'Oyuncu değiştir',
+      noHint: 'Bu konumdan mantık adımı çıkmadı.',
+      levels: [
+        { id: 'beginner', name: 'Başlangıç', about: 'Gizli ve çıplak tekler' },
+        { id: 'easy', name: 'Kolay', about: 'Kutu-satır elemesi' },
+        { id: 'medium', name: 'Orta', about: 'Çıplak ve gizli çiftler' },
+        { id: 'hard', name: 'Zor', about: 'Üçlüler ve X-Wing' },
+        { id: 'expert', name: 'Uzman', about: 'Swordfish ve XY-Wing' },
+        { id: 'master', name: 'Usta', about: 'XYZ-Wing' }
+      ]
+    },
+    en: {
+      title: 'Sudoku',
+      newGame: 'New game',
+      cont: 'Continue',
+      stats: 'Statistics',
+      language: 'Language',
+      refresh: 'Refresh screen',
+      confOn: 'Conflicts: on',
+      confOff: 'Conflicts: off',
+      who: 'Player name',
+      add: 'Continue with this name',
+      pick: 'Saved players',
+      back: 'Back',
+      needName: 'Enter a name before the game starts.',
+      noPlayers: 'No players yet.',
+      replace: 'The unfinished game will be replaced.',
+      notes: 'Notes',
+      notesOn: 'Notes on',
+      erase: 'Erase',
+      undo: 'Undo',
+      hint: 'Hint',
+      menu: 'Menu',
+      mistakes: 'Mistakes',
+      hints: 'Hints',
+      completed: 'Solved',
+      best: 'Best',
+      none: '—',
+      done: 'Complete',
+      again: 'New game',
+      home: 'Home',
+      changePlayer: 'Change player',
+      noHint: 'No logical step from here.',
+      levels: [
+        { id: 'beginner', name: 'Beginner', about: 'Hidden and naked singles' },
+        { id: 'easy', name: 'Easy', about: 'Box-line reduction' },
+        { id: 'medium', name: 'Medium', about: 'Naked and hidden pairs' },
+        { id: 'hard', name: 'Hard', about: 'Triples and X-Wing' },
+        { id: 'expert', name: 'Expert', about: 'Swordfish and XY-Wing' },
+        { id: 'master', name: 'Master', about: 'XYZ-Wing' }
+      ]
+    }
+  };
+
+  var state;
+  var view = '';
+  var purpose = 'play';
+  var sessionStart = 0;
+  var lastResult = null;
+  var boardCells = [];
+  var notePx = 8;
+
+  function L() {
+    return STR[state.lang] || STR.tr;
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function cleanName(s) {
+    s = String(s || '').replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ');
+    if (s.length > 20) s = s.substring(0, 20).replace(/\s+$/g, '');
+    return s;
+  }
+
+  function blankStats() {
+    var stats = {};
+    var i;
+    for (i = 0; i < LEVEL_IDS.length; i++) {
+      stats[LEVEL_IDS[i]] = { completed: 0, bestMs: 0, mistakes: 0, hints: 0, seen: [] };
+    }
+    return stats;
+  }
+
+  function findPlayer(name) {
+    var i;
+    for (i = 0; i < state.players.length; i++) {
+      if (state.players[i].name === name) return state.players[i];
+    }
+    return null;
+  }
+
+  function levelInfo(id) {
+    var levels = L().levels;
+    var i;
+    for (i = 0; i < levels.length; i++) if (levels[i].id === id) return levels[i];
+    return { id: id, name: id, about: '' };
+  }
+
+  function ensurePlayer(p) {
+    var i, id, base;
+    if (!p.stats) p.stats = blankStats();
+    for (i = 0; i < LEVEL_IDS.length; i++) {
+      id = LEVEL_IDS[i];
+      base = p.stats[id] || {};
+      p.stats[id] = {
+        completed: base.completed || 0,
+        bestMs: base.bestMs || 0,
+        mistakes: base.mistakes || 0,
+        hints: base.hints || 0,
+        seen: base.seen && base.seen.length ? base.seen : []
+      };
+    }
+    if (p.current) {
+      if (!PUZZLES[p.current.level] || !PUZZLES[p.current.level][p.current.index]) p.current = null;
+      else if (!p.current.values || p.current.values.length !== 81) p.current = null;
+    }
+  }
+
+  function load() {
+    var raw, data, i;
+    state = { lang: '', checkConflicts: true, lastPlayer: '', players: [] };
+    try {
+      raw = localStorage.getItem(KEY);
+    } catch (e) {
+      raw = null;
+    }
+    if (!raw) return;
+    try {
+      data = JSON.parse(raw);
+    } catch (e2) {
+      return;
+    }
+    if (data.lang === 'tr' || data.lang === 'en') state.lang = data.lang;
+    if (data.checkConflicts === false) state.checkConflicts = false;
+    if (typeof data.lastPlayer === 'string') state.lastPlayer = data.lastPlayer;
+    if (data.players && data.players.length) {
+      state.players = data.players;
+      for (i = 0; i < state.players.length; i++) ensurePlayer(state.players[i]);
+    }
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state));
+    } catch (e) {}
+  }
+
+  function setLangAttr() {
+    document.documentElement.lang = state.lang === 'en' ? 'en' : 'tr';
+    document.title = 'Sudoku';
+  }
+
+  function setApp(html) {
+    document.getElementById('app').innerHTML = html;
+  }
+
+  function byId(id) {
+    return document.getElementById(id);
+  }
+
+  function formatMs(ms) {
+    var s, m, h;
+    if (ms < 0) ms = 0;
+    s = (ms / 1000) | 0;
+    m = (s / 60) | 0;
+    h = (m / 60) | 0;
+    s = s % 60;
+    m = m % 60;
+    function z(n) { return (n < 10 ? '0' : '') + n; }
+    if (h > 0) return h + ':' + z(m) + ':' + z(s);
+    return z(m) + ':' + z(s);
+  }
+
+  function cur() {
+    var p = findPlayer(state.lastPlayer);
+    return p ? p.current : null;
+  }
+
+  function flash() {
+    var app = byId('app');
+    var panel = byId('flash');
+    app.style.display = 'none';
+    panel.style.display = 'block';
+    setTimeout(function () {
+      panel.style.display = 'none';
+      app.style.display = 'block';
+      if (view === 'game') sizeBoard();
+    }, 280);
+  }
+
+  function showLang() {
+    view = 'lang';
+    setApp(
+      '<h1>Sudoku</h1>' +
+      '<button type="button" id="tr">Türkçe</button>' +
+      '<button type="button" id="en">English</button>' +
+      '<button type="button" id="flashBtn">' + (state.lang === 'en' ? STR.en.refresh : STR.tr.refresh) + '</button>'
+    );
+    byId('tr').onclick = function () { chooseLang('tr'); };
+    byId('en').onclick = function () { chooseLang('en'); };
+    byId('flashBtn').onclick = flash;
+  }
+
+  function chooseLang(code) {
+    state.lang = code;
+    setLangAttr();
+    save();
+    showHome();
+  }
+
+  function showHome() {
+    var player, html, lang;
+    view = 'home';
+    setLangAttr();
+    lang = L();
+    player = findPlayer(state.lastPlayer);
+    html = '<h1>' + lang.title + '</h1>';
+    if (player) html += '<p class="meta">' + esc(player.name) + '</p>';
+    if (player && player.current) {
+      html += '<button type="button" id="cont">' + lang.cont + ' (' + formatMs(player.current.elapsedMs) + ')</button>';
+    }
+    html += '<button type="button" id="new">' + lang.newGame + '</button>';
+    html += '<button type="button" id="stats">' + lang.stats + '</button>';
+    html += '<button type="button" id="lang">' + lang.language + '</button>';
+    html += '<button type="button" id="conf">' + (state.checkConflicts ? lang.confOn : lang.confOff) + '</button>';
+    html += '<button type="button" id="flashBtn">' + lang.refresh + '</button>';
+    setApp(html);
+    if (byId('cont')) byId('cont').onclick = function () { showGame(); };
+    byId('new').onclick = function () { purpose = 'play'; showPlayers(); };
+    byId('stats').onclick = function () {
+      if (!state.players.length) {
+        purpose = 'stats';
+        showPlayers();
+        return;
+      }
+      if (!findPlayer(state.lastPlayer)) state.lastPlayer = state.players[0].name;
+      showStats();
+    };
+    byId('lang').onclick = showLang;
+    byId('conf').onclick = function () {
+      state.checkConflicts = !state.checkConflicts;
+      save();
+      showHome();
+    };
+    byId('flashBtn').onclick = flash;
+  }
+
+  function showPlayers() {
+    var lang = L();
+    var html = '';
+    var i;
+    view = 'players';
+    html += '<h1>' + lang.who + '</h1>';
+    if (purpose === 'play') {
+      html += '<input id="name" class="name" type="text" maxlength="20" autocomplete="off">';
+      html += '<button type="button" id="add">' + lang.add + '</button>';
+      html += '<p id="err" class="err"></p>';
+    }
+    if (state.players.length) {
+      html += '<p class="meta">' + lang.pick + '</p>';
+      for (i = 0; i < state.players.length; i++) {
+        html += '<button type="button" data-p="' + i + '">' + esc(state.players[i].name) + '</button>';
+      }
+    } else if (purpose === 'stats') {
+      html += '<p class="meta">' + lang.noPlayers + '</p>';
+    }
+    html += '<button type="button" id="back">' + lang.back + '</button>';
+    setApp(html);
+    if (byId('add')) byId('add').onclick = submitName;
+    if (byId('name')) {
+      byId('name').onkeydown = function (e) {
+        var code = e.keyCode || e.which || 0;
+        if (code === 13 || e.key === 'Enter') {
+          if (e.preventDefault) e.preventDefault();
+          submitName();
+        }
+      };
+    }
+    var buttons = document.getElementById('app').getElementsByTagName('button');
+    for (i = 0; i < buttons.length; i++) {
+      if (buttons[i].getAttribute('data-p') !== null) {
+        buttons[i].onclick = function (ev) {
+          var t = ev.target || ev.srcElement;
+          var idx = parseInt(t.getAttribute('data-p'), 10);
+          selectPlayer(state.players[idx].name);
+        };
+      }
+    }
+    byId('back').onclick = showHome;
+  }
+
+  function selectPlayer(name) {
+    state.lastPlayer = name;
+    save();
+    if (purpose === 'stats') showStats();
+    else showLevels();
+  }
+
+  function submitName() {
+    var name = cleanName(byId('name').value);
+    var player;
+    if (!name) {
+      byId('err').textContent = L().needName;
+      return;
+    }
+    player = findPlayer(name);
+    if (!player) {
+      player = { name: name, stats: blankStats(), current: null };
+      state.players.push(player);
+    }
+    selectPlayer(name);
+  }
+
+  function showLevels() {
+    var lang = L();
+    var player = findPlayer(state.lastPlayer);
+    var html = '';
+    var i, info, st;
+    view = 'levels';
+    if (!player) {
+      purpose = 'play';
+      showPlayers();
+      return;
+    }
+    html += '<h1>' + esc(player.name) + '</h1>';
+    if (player.current) html += '<p class="meta">' + lang.replace + '</p>';
+    for (i = 0; i < lang.levels.length; i++) {
+      info = lang.levels[i];
+      st = player.stats[info.id];
+      html += '<button type="button" data-l="' + info.id + '">' + esc(info.name);
+      html += '<span class="about">' + esc(info.about) + ' · ' + lang.completed + ' ' + (st ? st.completed : 0) + '</span>';
+      html += '</button>';
+    }
+    html += '<button type="button" id="back">' + lang.back + '</button>';
+    setApp(html);
+    var buttons = document.getElementById('app').getElementsByTagName('button');
+    for (i = 0; i < buttons.length; i++) {
+      if (buttons[i].getAttribute('data-l')) {
+        buttons[i].onclick = function (ev) {
+          var t = ev.target || ev.srcElement;
+          while (t && !t.getAttribute('data-l')) t = t.parentNode;
+          startLevel(t.getAttribute('data-l'));
+        };
+      }
+    }
+    byId('back').onclick = showHome;
+  }
+
+  function contains(arr, value) {
+    var i;
+    for (i = 0; i < arr.length; i++) if (arr[i] === value) return true;
+    return false;
+  }
+
+  function startLevel(id) {
+    var player = findPlayer(state.lastPlayer);
+    var list = PUZZLES[id];
+    var seen, avail, i, index, item, values, givens, notes, solution, n;
+    if (!player || !list || !list.length) return;
+    seen = player.stats[id].seen;
+    avail = [];
+    for (i = 0; i < list.length; i++) {
+      if (contains(seen, i)) continue;
+      if (player.current && player.current.level === id && player.current.index === i) continue;
+      avail.push(i);
+    }
+    if (!avail.length) {
+      player.stats[id].seen = [];
+      for (i = 0; i < list.length; i++) avail.push(i);
+    }
+    index = avail[(Math.random() * avail.length) | 0];
+    item = list[index];
+    values = [];
+    givens = [];
+    notes = [];
+    solution = [];
+    for (i = 0; i < 81; i++) {
+      n = item.g.charCodeAt(i) - 48;
+      values.push(n);
+      givens.push(n ? 1 : 0);
+      notes.push(0);
+      solution.push(item.s.charCodeAt(i) - 48);
+    }
+    player.current = {
+      level: id,
+      index: index,
+      values: values,
+      givens: givens,
+      notes: notes,
+      solution: solution,
+      mistakes: 0,
+      hintsUsed: 0,
+      elapsedMs: 0,
+      undo: [],
+      selected: -1,
+      lastEdit: -1,
+      notesMode: 0
+    };
+    sessionStart = 0;
+    save();
+    showGame();
+  }
+
+  function conflicts(i) {
+    var g = cur();
+    var v = g.values[i];
+    var r, c, k, j, br, bc, rr, cc;
+    if (!v) return false;
+    r = (i / 9) | 0;
+    c = i % 9;
+    for (k = 0; k < 9; k++) {
+      j = r * 9 + k;
+      if (j !== i && g.values[j] === v) return true;
+      j = k * 9 + c;
+      if (j !== i && g.values[j] === v) return true;
+    }
+    br = ((r / 3) | 0) * 3;
+    bc = ((c / 3) | 0) * 3;
+    for (rr = 0; rr < 3; rr++) {
+      for (cc = 0; cc < 3; cc++) {
+        j = (br + rr) * 9 + (bc + cc);
+        if (j !== i && g.values[j] === v) return true;
+      }
+    }
+    return false;
+  }
+
+  function classFor(i) {
+    var g = cur();
+    var r = (i / 9) | 0;
+    var c = i % 9;
+    var cls = 'c';
+    if (c === 0) cls += ' bl';
+    if (r === 0) cls += ' bt';
+    if (c === 2 || c === 5 || c === 8) cls += ' br';
+    if (r === 2 || r === 5 || r === 8) cls += ' bb';
+    if (g.givens[i]) cls += ' given';
+    if (i === g.selected) cls += ' sel';
+    if (state.checkConflicts && i === g.lastEdit && g.values[i] && conflicts(i)) cls += ' bad';
+    return cls;
+  }
+
+  function notesHtml(mask) {
+    var html = '<table class="n" style="font-size:' + notePx + 'px"><tbody>';
+    var d = 1;
+    var r, c;
+    for (r = 0; r < 3; r++) {
+      html += '<tr>';
+      for (c = 0; c < 3; c++) {
+        html += '<td>' + ((mask & (1 << d)) ? String(d) : '') + '</td>';
+        d++;
+      }
+      html += '</tr>';
+    }
+    return html + '</tbody></table>';
+  }
+
+  function renderCell(i) {
+    var g = cur();
+    var td = boardCells[i];
+    if (!td || !g) return;
+    td.className = classFor(i);
+    if (g.values[i]) td.innerHTML = String(g.values[i]);
+    else if (g.notes[i]) td.innerHTML = notesHtml(g.notes[i]);
+    else td.innerHTML = '';
+  }
+
+  function renderAll() {
+    var i;
+    for (i = 0; i < 81; i++) renderCell(i);
+  }
+
+  function sizeBoard() {
+    var table = byId('board');
+    var w, h, i;
+    if (!table || !boardCells.length) return;
+    w = table.offsetWidth;
+    if (!w) {
+      renderAll();
+      return;
+    }
+    h = (w / 9) | 0;
+    if (h < 28) h = 28;
+    notePx = (h / 5) | 0;
+    if (notePx < 8) notePx = 8;
+    if (notePx > 16) notePx = 16;
+    for (i = 0; i < boardCells.length; i++) {
+      boardCells[i].style.height = h + 'px';
+      boardCells[i].style.fontSize = ((h * 0.52) | 0) + 'px';
+    }
+    renderAll();
+  }
+
+  function fold() {
+    var g = cur();
+    if (!g || !sessionStart) return;
+    g.elapsedMs += Date.now() - sessionStart;
+    sessionStart = Date.now();
+  }
+
+  function liveMs() {
+    var g = cur();
+    if (!g) return 0;
+    if (!sessionStart) return g.elapsedMs;
+    return g.elapsedMs + (Date.now() - sessionStart);
+  }
+
+  function updateHud() {
+    var g = cur();
+    var info;
+    if (!g || !byId('hud')) return;
+    info = levelInfo(g.level);
+    byId('hud').textContent = findPlayer(state.lastPlayer).name + ' · ' + info.name;
+    byId('time').textContent = formatMs(liveMs());
+    byId('miss').textContent = L().mistakes + ' ' + g.mistakes;
+    byId('used').textContent = L().hints + ' ' + g.hintsUsed;
+  }
+
+  function paintNotes() {
+    var g = cur();
+    var b = byId('notes');
+    if (!b || !g) return;
+    b.className = g.notesMode ? 'on' : '';
+    b.textContent = g.notesMode ? L().notesOn : L().notes;
+  }
+
+  function setHintBox(text) {
+    var box = byId('hintbox');
+    if (!box) return;
+    if (!text) {
+      box.style.display = 'none';
+      box.textContent = '';
+      return;
+    }
+    box.style.display = 'block';
+    box.textContent = text;
+  }
+
+  function houseLabel(house, index) {
+    var n = (index || 0) + 1;
+    if (state.lang === 'en') {
+      if (house === 'row') return 'row ' + n;
+      if (house === 'col') return 'column ' + n;
+      return 'box ' + n;
+    }
+    if (house === 'row') return n + '. satır';
+    if (house === 'col') return n + '. sütun';
+    return n + '. kutu';
+  }
+
+  function cellLabel(index) {
+    var r = ((index / 9) | 0) + 1;
+    var c = (index % 9) + 1;
+    if (state.lang === 'en') return 'row ' + r + ', column ' + c;
+    return r + '. satır, ' + c + '. sütun';
+  }
+
+  function hintText(hint) {
+    var cell = cellLabel(hint.index);
+    var d = String(hint.digit);
+    var info = hint.info || {};
+    var pd = String(info.digit || hint.digit);
+    var digits = info.digits && info.digits.length ? info.digits.join(', ') : pd;
+    var house = info.house ? houseLabel(info.house, info.houseIndex) : '';
+    var tech = hint.tech;
+    if (state.lang === 'en') {
+      if (tech === 1 && house) return 'Hidden single: in ' + house + ', ' + d + ' fits only ' + cell + '.';
+      if (tech === 2) return 'Naked single: ' + cell + ' has only ' + d + ' left.';
+      if (tech === 3) return 'Pointing: ' + pd + ' is locked to one line in a box. Result: ' + cell + ' = ' + d + '.';
+      if (tech === 4) return 'Box-line reduction: ' + pd + ' in a line sits in one box. Result: ' + cell + ' = ' + d + '.';
+      if (tech === 5) return 'Naked pair (' + digits + ') locks two cells. Result: ' + cell + ' = ' + d + '.';
+      if (tech === 6) return 'Hidden pair (' + digits + ') lives in only two cells. Result: ' + cell + ' = ' + d + '.';
+      if (tech === 7) return 'Naked triple (' + digits + ') locks three cells. Result: ' + cell + ' = ' + d + '.';
+      if (tech === 8) return 'Hidden triple (' + digits + ') lives in only three cells. Result: ' + cell + ' = ' + d + '.';
+      if (tech === 9) return 'X-Wing: ' + pd + ' occupies the same two lines. Result: ' + cell + ' = ' + d + '.';
+      if (tech === 10) return 'Swordfish: ' + pd + ' is locked across three lines. Result: ' + cell + ' = ' + d + '.';
+      if (tech === 11) return 'XY-Wing: the wings remove ' + pd + '. Result: ' + cell + ' = ' + d + '.';
+      if (tech === 12) return 'XYZ-Wing: the shared candidate ' + pd + ' is removed. Result: ' + cell + ' = ' + d + '.';
+      return 'Next digit: ' + cell + ' = ' + d + '.';
+    }
+    if (tech === 1 && house) return 'Gizli tek: ' + house + ' içinde ' + d + ' yalnız ' + cell + ' hücresine yazılır.';
+    if (tech === 2) return 'Çıplak tek: ' + cell + ' hücresinde geriye yalnız ' + d + ' kaldı.';
+    if (tech === 3) return 'İşaretleme: ' + pd + ' bir kutuda tek çizgiye kilitli. Sonuç: ' + cell + ' = ' + d + '.';
+    if (tech === 4) return 'Satır-kutu elemesi: ' + pd + ' adayları tek kutuda toplanıyor. Sonuç: ' + cell + ' = ' + d + '.';
+    if (tech === 5) return 'Çıplak çift (' + digits + ') iki hücreyi kilitler. Sonuç: ' + cell + ' = ' + d + '.';
+    if (tech === 6) return 'Gizli çift (' + digits + ') yalnız iki hücrede duruyor. Sonuç: ' + cell + ' = ' + d + '.';
+    if (tech === 7) return 'Çıplak üçlü (' + digits + ') üç hücreyi kilitler. Sonuç: ' + cell + ' = ' + d + '.';
+    if (tech === 8) return 'Gizli üçlü (' + digits + ') yalnız üç hücrede. Sonuç: ' + cell + ' = ' + d + '.';
+    if (tech === 9) return 'X-Wing: ' + pd + ' iki çizgide aynı konuma oturur. Sonuç: ' + cell + ' = ' + d + '.';
+    if (tech === 10) return 'Swordfish: ' + pd + ' üç çizgide kilitlenir. Sonuç: ' + cell + ' = ' + d + '.';
+    if (tech === 11) return 'XY-Wing: kanatlar ' + pd + ' adayını eler. Sonuç: ' + cell + ' = ' + d + '.';
+    if (tech === 12) return 'XYZ-Wing: ortak aday ' + pd + ' elenir. Sonuç: ' + cell + ' = ' + d + '.';
+    return 'Sonraki rakam: ' + cell + ' = ' + d + '.';
+  }
+
+  function paintTouched(a, b, c, d) {
+    var seen = {};
+    var list = [a, b, c, d];
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (list[i] === null || list[i] === undefined || list[i] < 0 || seen[list[i]]) continue;
+      seen[list[i]] = 1;
+      renderCell(list[i]);
+    }
+  }
+
+  function pushUndo(index) {
+    var g = cur();
+    g.undo.push({
+      i: index,
+      value: g.values[index],
+      notes: g.notes[index],
+      mistakes: g.mistakes,
+      lastEdit: g.lastEdit,
+      selected: g.selected
+    });
+    if (g.undo.length > 80) g.undo.shift();
+  }
+
+  function select(index) {
+    var g = cur();
+    var prev;
+    if (!g || index < 0 || index > 80) return;
+    prev = g.selected;
+    g.selected = index;
+    paintTouched(prev, index);
+  }
+
+  function placeDigit(d) {
+    var g = cur();
+    var prevLast, i;
+    if (!g || g.selected < 0 || g.givens[g.selected]) return;
+    if (d < 1 || d > 9) return;
+    fold();
+    i = g.selected;
+    prevLast = g.lastEdit;
+    pushUndo(i);
+    if (g.notesMode && !g.values[i]) {
+      g.notes[i] ^= (1 << d);
+    } else {
+      g.values[i] = d;
+      g.notes[i] = 0;
+      g.lastEdit = i;
+      if (conflicts(i)) g.mistakes++;
+    }
+    setHintBox('');
+    paintTouched(prevLast, i);
+    updateHud();
+    save();
+    if (isWin()) finish();
+  }
+
+  function erase() {
+    var g = cur();
+    var i, prevLast;
+    if (!g || g.selected < 0 || g.givens[g.selected]) return;
+    i = g.selected;
+    if (!g.values[i] && !g.notes[i]) return;
+    fold();
+    prevLast = g.lastEdit;
+    pushUndo(i);
+    g.values[i] = 0;
+    g.notes[i] = 0;
+    g.lastEdit = i;
+    setHintBox('');
+    paintTouched(prevLast, i);
+    updateHud();
+    save();
+  }
+
+  function undo() {
+    var g = cur();
+    var step, oldSel, oldLast;
+    if (!g || !g.undo.length) return;
+    fold();
+    oldSel = g.selected;
+    oldLast = g.lastEdit;
+    step = g.undo.pop();
+    g.values[step.i] = step.value;
+    g.notes[step.i] = step.notes;
+    g.mistakes = step.mistakes;
+    g.lastEdit = step.lastEdit;
+    g.selected = step.selected;
+    setHintBox('');
+    paintTouched(step.i, oldSel, oldLast, g.lastEdit);
+    if (g.selected !== step.i && g.selected !== oldSel && g.selected !== oldLast && g.selected !== g.lastEdit) {
+      renderCell(g.selected);
+    }
+    updateHud();
+    save();
+  }
+
+  function useHint() {
+    var g = cur();
+    var grid = [];
+    var i, hint, oldSel, oldLast;
+    if (!g) return;
+    for (i = 0; i < 81; i++) grid.push(g.values[i] === g.solution[i] ? g.solution[i] : 0);
+    hint = SudokuTech.nextHint(grid);
+    fold();
+    if (!hint) {
+      setHintBox(L().noHint);
+      updateHud();
+      return;
+    }
+    oldSel = g.selected;
+    oldLast = g.lastEdit;
+    pushUndo(hint.index);
+    g.values[hint.index] = hint.digit;
+    g.notes[hint.index] = 0;
+    g.hintsUsed++;
+    g.lastEdit = hint.index;
+    g.selected = hint.index;
+    setHintBox(hintText(hint));
+    paintTouched(hint.index, oldSel, oldLast);
+    updateHud();
+    save();
+    if (isWin()) finish();
+  }
+
+  function isWin() {
+    var g = cur();
+    var i;
+    if (!g) return false;
+    for (i = 0; i < 81; i++) if (g.values[i] !== g.solution[i]) return false;
+    return true;
+  }
+
+  function finish() {
+    var player = findPlayer(state.lastPlayer);
+    var g = player.current;
+    var st = player.stats[g.level];
+    fold();
+    st.completed += 1;
+    st.mistakes += g.mistakes;
+    st.hints += g.hintsUsed;
+    if (!st.bestMs || g.elapsedMs < st.bestMs) st.bestMs = g.elapsedMs;
+    if (!contains(st.seen, g.index)) st.seen.push(g.index);
+    lastResult = { level: g.level, ms: g.elapsedMs, mistakes: g.mistakes, hints: g.hintsUsed };
+    player.current = null;
+    sessionStart = 0;
+    save();
+    showDone();
+  }
+
+  function onBoard(e) {
+    var t = e.target || e.srcElement;
+    var raw;
+    while (t && t !== byId('board')) {
+      if (t.getAttribute && t.getAttribute('data-i') !== null) {
+        raw = t.getAttribute('data-i');
+        select(parseInt(raw, 10));
+        return;
+      }
+      t = t.parentNode;
+    }
+  }
+
+  function showGame() {
+    var g = cur();
+    var lang, table, tbody, r, c, i, tr, td, html;
+    if (!g) {
+      showHome();
+      return;
+    }
+    view = 'game';
+    sessionStart = Date.now();
+    lang = L();
+    html = '<p id="hud" class="meta"></p>';
+    html += '<p class="meta"><span id="time"></span> · <span id="miss"></span> · <span id="used"></span></p>';
+    html += '<table id="board" class="board"></table>';
+    html += '<table class="pad"><tbody>';
+    html += '<tr><td><button type="button" data-d="1">1</button></td><td><button type="button" data-d="2">2</button></td><td><button type="button" data-d="3">3</button></td></tr>';
+    html += '<tr><td><button type="button" data-d="4">4</button></td><td><button type="button" data-d="5">5</button></td><td><button type="button" data-d="6">6</button></td></tr>';
+    html += '<tr><td><button type="button" data-d="7">7</button></td><td><button type="button" data-d="8">8</button></td><td><button type="button" data-d="9">9</button></td></tr>';
+    html += '</tbody></table>';
+    html += '<table class="pad"><tbody>';
+    html += '<tr><td><button type="button" id="notes"></button></td><td><button type="button" id="erase"></button></td><td><button type="button" id="undo"></button></td></tr>';
+    html += '<tr><td><button type="button" id="hint"></button></td><td><button type="button" id="menu"></button></td><td><button type="button" id="flashBtn"></button></td></tr>';
+    html += '</tbody></table>';
+    html += '<p id="hintbox" class="hintbox" style="display:none"></p>';
+    setApp(html);
+    byId('erase').textContent = lang.erase;
+    byId('undo').textContent = lang.undo;
+    byId('hint').textContent = lang.hint;
+    byId('menu').textContent = lang.menu;
+    byId('flashBtn').textContent = lang.refresh;
+    table = byId('board');
+    tbody = document.createElement('tbody');
+    boardCells = [];
+    i = 0;
+    for (r = 0; r < 9; r++) {
+      tr = document.createElement('tr');
+      for (c = 0; c < 9; c++) {
+        td = document.createElement('td');
+        td.setAttribute('data-i', String(i));
+        tr.appendChild(td);
+        boardCells.push(td);
+        i++;
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    table.onclick = onBoard;
+    var padButtons = document.getElementById('app').getElementsByTagName('button');
+    for (i = 0; i < padButtons.length; i++) {
+      if (padButtons[i].getAttribute('data-d')) {
+        padButtons[i].onclick = function (ev) {
+          var t = ev.target || ev.srcElement;
+          placeDigit(parseInt(t.getAttribute('data-d'), 10));
+        };
+      }
+    }
+    byId('notes').onclick = function () {
+      var game = cur();
+      if (!game) return;
+      game.notesMode = game.notesMode ? 0 : 1;
+      paintNotes();
+      save();
+    };
+    byId('erase').onclick = erase;
+    byId('undo').onclick = undo;
+    byId('hint').onclick = useHint;
+    byId('menu').onclick = function () {
+      fold();
+      sessionStart = 0;
+      save();
+      showHome();
+    };
+    byId('flashBtn').onclick = flash;
+    paintNotes();
+    updateHud();
+    sizeBoard();
+  }
+
+  function showDone() {
+    var lang = L();
+    var info, html;
+    view = 'done';
+    info = lastResult ? levelInfo(lastResult.level) : null;
+    html = '<h1>' + lang.done + '</h1>';
+    if (info) html += '<p class="meta">' + esc(info.name) + '</p>';
+    if (lastResult) {
+      html += '<div class="block">';
+      html += '<div>' + formatMs(lastResult.ms) + '</div>';
+      html += '<div>' + lang.mistakes + ' ' + lastResult.mistakes + '</div>';
+      html += '<div>' + lang.hints + ' ' + lastResult.hints + '</div>';
+      html += '</div>';
+    }
+    html += '<button type="button" id="again">' + lang.again + '</button>';
+    html += '<button type="button" id="home">' + lang.home + '</button>';
+    setApp(html);
+    byId('again').onclick = function () { purpose = 'play'; showPlayers(); };
+    byId('home').onclick = showHome;
+  }
+
+  function showStats() {
+    var lang = L();
+    var player = findPlayer(state.lastPlayer);
+    var html = '';
+    var i, info, st;
+    view = 'stats';
+    if (!player) {
+      purpose = 'stats';
+      showPlayers();
+      return;
+    }
+    html += '<h1>' + esc(player.name) + '</h1>';
+    for (i = 0; i < lang.levels.length; i++) {
+      info = lang.levels[i];
+      st = player.stats[info.id];
+      html += '<div class="block">';
+      html += '<div class="bname">' + esc(info.name) + '</div>';
+      html += '<div>' + lang.completed + ': ' + st.completed + '</div>';
+      html += '<div>' + lang.best + ': ' + (st.bestMs ? formatMs(st.bestMs) : lang.none) + '</div>';
+      html += '<div>' + lang.mistakes + ': ' + st.mistakes + '</div>';
+      html += '<div>' + lang.hints + ': ' + st.hints + '</div>';
+      html += '</div>';
+    }
+    html += '<button type="button" id="switch">' + lang.changePlayer + '</button>';
+    html += '<button type="button" id="back">' + lang.back + '</button>';
+    setApp(html);
+    byId('switch').onclick = function () { purpose = 'stats'; showPlayers(); };
+    byId('back').onclick = showHome;
+  }
+
+  function eat(e) {
+    if (e.preventDefault) e.preventDefault();
+  }
+
+  function onKey(e) {
+    var ch, code;
+    if (view !== 'game') return;
+    ch = e.key || '';
+    if (ch.length === 1 && ch >= '1' && ch <= '9') {
+      eat(e);
+      placeDigit(parseInt(ch, 10));
+      return;
+    }
+    if (ch === 'Backspace' || ch === 'Delete') { eat(e); erase(); return; }
+    if (ch === 'ArrowLeft') { eat(e); moveSel(0, -1); return; }
+    if (ch === 'ArrowRight') { eat(e); moveSel(0, 1); return; }
+    if (ch === 'ArrowUp') { eat(e); moveSel(-1, 0); return; }
+    if (ch === 'ArrowDown') { eat(e); moveSel(1, 0); return; }
+    if ((ch === 'z' || ch === 'Z') && (e.ctrlKey || e.metaKey)) { eat(e); undo(); return; }
+    code = e.keyCode || e.which || 0;
+    if (!ch) {
+      if (code >= 49 && code <= 57) { eat(e); placeDigit(code - 48); return; }
+      if (code >= 97 && code <= 105) { eat(e); placeDigit(code - 96); return; }
+      if (code === 8 || code === 46) { eat(e); erase(); return; }
+      if (code === 37) { eat(e); moveSel(0, -1); return; }
+      if (code === 39) { eat(e); moveSel(0, 1); return; }
+      if (code === 38) { eat(e); moveSel(-1, 0); return; }
+      if (code === 40) { eat(e); moveSel(1, 0); return; }
+    }
+  }
+
+  function moveSel(dr, dc) {
+    var g = cur();
+    var i, r, c;
+    if (!g) return;
+    i = g.selected < 0 ? 0 : g.selected;
+    r = (i / 9) | 0;
+    c = i % 9;
+    if (g.selected < 0 && (dr || dc)) {
+      select(0);
+      return;
+    }
+    r += dr;
+    c += dc;
+    if (r < 0) r = 0;
+    if (r > 8) r = 8;
+    if (c < 0) c = 0;
+    if (c > 8) c = 8;
+    select(r * 9 + c);
+  }
+
+  function prepareOffline() {
+    if (!navigator.serviceWorker) return;
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+    navigator.serviceWorker.register('sw.js')['catch'](function () {});
+  }
+
+  function main() {
+    load();
+    document.onkeydown = onKey;
+    prepareOffline();
+    if (!state.lang) showLang();
+    else showHome();
+  }
+
+  main();
+})();
+
+</script>
+</body>
+</html>

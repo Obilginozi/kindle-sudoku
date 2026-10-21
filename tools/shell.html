@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Sudoku</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+  body { padding: 8px; font-family: sans-serif; }
+  h1 { font-size: 28px; font-weight: bold; text-align: center; margin: 8px 0; }
+  p { margin: 6px 0; }
+  button, input.name {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    margin: 8px 0;
+    padding: 8px;
+    font-size: 18px;
+    font-family: sans-serif;
+    background: #fff;
+    color: #000;
+    border: 2px solid #000;
+    border-radius: 0;
+  }
+  button.on { background: #000; color: #fff; }
+  .meta { text-align: center; font-size: 16px; }
+  .about { display: block; font-size: 14px; font-weight: normal; }
+  .err { min-height: 1.2em; font-size: 16px; }
+  .block { border: 2px solid #000; padding: 8px; margin: 8px 0; }
+  .bname { font-weight: bold; font-size: 18px; margin-bottom: 4px; }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  table.board {
+    width: 100%;
+    max-width: 640px;
+    margin: 8px auto;
+    border-collapse: collapse;
+    table-layout: fixed;
+    background: #fff;
+  }
+  table.board td.c {
+    border: 1px solid #000;
+    text-align: center;
+    vertical-align: middle;
+    padding: 0;
+    font-weight: normal;
+    background: #fff;
+    color: #000;
+  }
+  table.board td.bl { border-left-width: 3px; }
+  table.board td.br { border-right-width: 3px; }
+  table.board td.bt { border-top-width: 3px; }
+  table.board td.bb { border-bottom-width: 3px; }
+  table.board td.given { font-weight: bold; }
+  table.board td.sel { outline: 3px solid #000; }
+  table.board td.bad { background: #000; color: #fff; }
+  table.n { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.board table.n td {
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+    font-weight: normal;
+    font-size: 8px;
+    line-height: 1.1;
+    padding: 0;
+    height: auto;
+  }
+  table.pad {
+    width: 100%;
+    max-width: 640px;
+    margin: 6px auto;
+    border-collapse: separate;
+    border-spacing: 4px;
+  }
+  table.pad td { width: 33%; padding: 0; }
+  table.pad button { margin: 0; font-size: 22px; min-height: 48px; }
+  .hintbox { border: 2px solid #000; padding: 8px; margin: 8px 0; font-size: 16px; }
+  #flash { display: none; background: #fff; height: 2400px; }
+</style>
+</head>
+<body>
+<div id="flash"></div>
+<div id="app" class="wrap"></div>
+<script>
+__CODE__
+</script>
+</body>
+</html>
