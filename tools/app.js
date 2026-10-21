@@ -16,6 +16,10 @@
       stats: 'İstatistik',
       language: 'Dil',
       refresh: 'Ekranı tazele',
+      refreshShort: 'Tazele',
+      ready: 'Çevrimdışı hazır. Uçak modunu açın.',
+      flying: 'Uçak modu açık. Çevrimdışı oynuyorsunuz.',
+      wait: 'Sayfa bir kez kalsın, sonra uçak modunu açın.',
       confOn: 'Çakışma: açık',
       confOff: 'Çakışma: kapalı',
       who: 'Oyuncu adı',
@@ -47,7 +51,7 @@
         { id: 'medium', name: 'Orta', about: 'Çıplak ve gizli çiftler' },
         { id: 'hard', name: 'Zor', about: 'Üçlüler ve X-Wing' },
         { id: 'expert', name: 'Uzman', about: 'Swordfish ve XY-Wing' },
-        { id: 'master', name: 'Usta', about: 'XYZ-Wing' }
+        { id: 'master', name: 'ZeyLevel', about: 'XYZ-Wing' }
       ]
     },
     en: {
@@ -57,6 +61,10 @@
       stats: 'Statistics',
       language: 'Language',
       refresh: 'Refresh screen',
+      refreshShort: 'Refresh',
+      ready: 'Offline ready. Turn on airplane mode.',
+      flying: 'Airplane mode is on. Playing offline.',
+      wait: 'Leave this page open once, then turn on airplane mode.',
       confOn: 'Conflicts: on',
       confOff: 'Conflicts: off',
       who: 'Player name',
@@ -88,7 +96,7 @@
         { id: 'medium', name: 'Medium', about: 'Naked and hidden pairs' },
         { id: 'hard', name: 'Hard', about: 'Triples and X-Wing' },
         { id: 'expert', name: 'Expert', about: 'Swordfish and XY-Wing' },
-        { id: 'master', name: 'Master', about: 'XYZ-Wing' }
+        { id: 'master', name: 'ZeyLevel', about: 'XYZ-Wing' }
       ]
     }
   };
@@ -100,6 +108,7 @@
   var lastResult = null;
   var boardCells = [];
   var notePx = 8;
+  var offlineBound = false;
 
   function L() {
     return STR[state.lang] || STR.tr;
@@ -199,6 +208,41 @@
 
   function setApp(html) {
     document.getElementById('app').innerHTML = html;
+    document.body.className = view === 'game' ? 'play' : '';
+    watchOffline();
+  }
+
+  function offlineHtml() {
+    return '<p id="offline" class="offline"></p>';
+  }
+
+  function offlineText() {
+    var lang = state.lang === 'en' ? STR.en : STR.tr;
+    var online = true;
+    var ready = false;
+    try {
+      if (navigator.onLine === false) online = false;
+    } catch (e1) {}
+    try {
+      ready = !!(navigator.serviceWorker && navigator.serviceWorker.controller);
+    } catch (e2) {}
+    if (!online) return lang.flying;
+    if (location.protocol === 'file:' || ready) return lang.ready;
+    return lang.wait;
+  }
+
+  function watchOffline() {
+    var el = byId('offline');
+    if (!el) return;
+    el.textContent = offlineText();
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.ready && navigator.serviceWorker.ready.then) {
+        navigator.serviceWorker.ready.then(function () {
+          var node = byId('offline');
+          if (node) node.textContent = offlineText();
+        });
+      }
+    } catch (e3) {}
   }
 
   function byId(id) {
@@ -238,7 +282,7 @@
   function showLang() {
     view = 'lang';
     setApp(
-      '<h1>Sudoku</h1>' +
+      '<h1>Sudoku</h1>' + offlineHtml() +
       '<button type="button" id="tr">Türkçe</button>' +
       '<button type="button" id="en">English</button>' +
       '<button type="button" id="flashBtn">' + (state.lang === 'en' ? STR.en.refresh : STR.tr.refresh) + '</button>'
@@ -261,7 +305,7 @@
     setLangAttr();
     lang = L();
     player = findPlayer(state.lastPlayer);
-    html = '<h1>' + lang.title + '</h1>';
+    html = '<h1>' + lang.title + '</h1>' + offlineHtml();
     if (player) html += '<p class="meta">' + esc(player.name) + '</p>';
     if (player && player.current) {
       html += '<button type="button" id="cont">' + lang.cont + ' (' + formatMs(player.current.elapsedMs) + ')</button>';
@@ -297,7 +341,7 @@
     var html = '';
     var i;
     view = 'players';
-    html += '<h1>' + lang.who + '</h1>';
+    html += '<h1>' + lang.who + '</h1>' + offlineHtml();
     if (purpose === 'play') {
       html += '<input id="name" class="name" type="text" maxlength="20" autocomplete="off">';
       html += '<button type="button" id="add">' + lang.add + '</button>';
@@ -369,7 +413,7 @@
       showPlayers();
       return;
     }
-    html += '<h1>' + esc(player.name) + '</h1>';
+    html += '<h1>' + esc(player.name) + '</h1>' + offlineHtml();
     if (player.current) html += '<p class="meta">' + lang.replace + '</p>';
     for (i = 0; i < lang.levels.length; i++) {
       info = lang.levels[i];
@@ -517,25 +561,87 @@
     for (i = 0; i < 81; i++) renderCell(i);
   }
 
-  function sizeBoard() {
+  function viewportH() {
+    return window.innerHeight || document.documentElement.clientHeight || 0;
+  }
+
+  function applySize(h, sideW) {
     var table = byId('board');
-    var w, h, i;
-    if (!table || !boardCells.length) return;
-    w = table.offsetWidth;
-    if (!w) {
-      renderAll();
-      return;
+    var wrap = byId('boardwrap');
+    var side = byId('side');
+    var rows, rowH, i, px;
+    px = h * 9;
+    if (wrap) wrap.style.width = (px + 4) + 'px';
+    if (table) {
+      table.style.width = px + 'px';
+      table.style.height = px + 'px';
     }
-    h = (w / 9) | 0;
-    if (h < 28) h = 28;
+    if (side) {
+      side.style.width = sideW + 'px';
+      side.style.height = px + 'px';
+      if (side.parentNode && side.parentNode.style) side.parentNode.style.width = sideW + 'px';
+      rows = side.getElementsByTagName('tr');
+      rowH = (px / 3) | 0;
+      for (i = 0; i < rows.length; i++) rows[i].style.height = rowH + 'px';
+      rows = side.getElementsByTagName('button');
+      rowH = rowH - 8;
+      if (rowH < 28) rowH = 28;
+      for (i = 0; i < rows.length; i++) rows[i].style.height = rowH + 'px';
+    }
     notePx = (h / 5) | 0;
-    if (notePx < 8) notePx = 8;
-    if (notePx > 16) notePx = 16;
+    if (notePx < 7) notePx = 7;
+    if (notePx > 14) notePx = 14;
     for (i = 0; i < boardCells.length; i++) {
       boardCells[i].style.height = h + 'px';
       boardCells[i].style.fontSize = ((h * 0.52) | 0) + 'px';
     }
+    rows = byId('stage');
+    wrap = byId('below');
+    if (rows && wrap) {
+      wrap.style.width = rows.offsetWidth + 'px';
+      wrap.style.marginLeft = 'auto';
+      wrap.style.marginRight = 'auto';
+    }
     renderAll();
+  }
+
+  function sizeBoard() {
+    var table = byId('board');
+    var stage = byId('stage');
+    var below = byId('below');
+    var side = byId('side');
+    var stageW, sideW, boardMax, cellW, vh, top, belowH, room, h, docH, extra, shrink;
+    if (!table || !boardCells.length) return;
+    stageW = stage && stage.parentNode ? stage.parentNode.clientWidth : 0;
+    if (!stageW && table.parentNode) stageW = table.parentNode.clientWidth;
+    if (!stageW) {
+      renderAll();
+      return;
+    }
+    sideW = stageW > 520 ? 168 : ((stageW * 0.36) | 0);
+    if (sideW < 108) sideW = 108;
+    if (side) side.style.width = sideW + 'px';
+    boardMax = stageW - sideW - 10;
+    if (boardMax < 180) boardMax = 180;
+    cellW = (boardMax / 9) | 0;
+    vh = viewportH();
+    top = stage ? stage.offsetTop : 70;
+    belowH = below ? below.offsetHeight : 90;
+    room = vh - top - belowH - 44;
+    if (room < 180) room = 180;
+    h = (room / 9) | 0;
+    if (cellW < h) h = cellW;
+    if (h > 64) h = 64;
+    if (h < 24) h = 24;
+    applySize(h, sideW);
+    docH = document.body.scrollHeight || document.documentElement.scrollHeight;
+    if (vh && docH > vh + 2 && h > 24) {
+      extra = docH - vh;
+      shrink = ((extra / 9) | 0) + 1;
+      h = h - shrink;
+      if (h < 24) h = 24;
+      applySize(h, sideW);
+    }
   }
 
   function fold() {
@@ -574,13 +680,8 @@
   function setHintBox(text) {
     var box = byId('hintbox');
     if (!box) return;
-    if (!text) {
-      box.style.display = 'none';
-      box.textContent = '';
-      return;
-    }
-    box.style.display = 'block';
-    box.textContent = text;
+    box.textContent = text || '';
+    box.style.borderWidth = text ? '2px' : '0';
   }
 
   function houseLabel(house, index) {
@@ -813,25 +914,29 @@
     view = 'game';
     sessionStart = Date.now();
     lang = L();
-    html = '<p id="hud" class="meta"></p>';
-    html += '<p class="meta"><span id="time"></span> · <span id="miss"></span> · <span id="used"></span></p>';
-    html += '<table id="board" class="board"></table>';
-    html += '<table class="pad"><tbody>';
+    html = '<table class="head"><tbody><tr>';
+    html += '<td><h1>' + lang.title + '</h1></td>';
+    html += '<td class="hmeta"><p id="hud" class="meta"></p></td>';
+    html += '</tr><tr><td colspan="2">' + offlineHtml() + '</td></tr></tbody></table>';
+    html += '<table class="stage" id="stage"><tbody><tr>';
+    html += '<td id="boardwrap" class="boardwrap"><table id="board" class="board"></table></td>';
+    html += '<td class="sidewrap"><table class="side" id="side"><tbody>';
     html += '<tr><td><button type="button" data-d="1">1</button></td><td><button type="button" data-d="2">2</button></td><td><button type="button" data-d="3">3</button></td></tr>';
     html += '<tr><td><button type="button" data-d="4">4</button></td><td><button type="button" data-d="5">5</button></td><td><button type="button" data-d="6">6</button></td></tr>';
     html += '<tr><td><button type="button" data-d="7">7</button></td><td><button type="button" data-d="8">8</button></td><td><button type="button" data-d="9">9</button></td></tr>';
-    html += '</tbody></table>';
-    html += '<table class="pad"><tbody>';
-    html += '<tr><td><button type="button" id="notes"></button></td><td><button type="button" id="erase"></button></td><td><button type="button" id="undo"></button></td></tr>';
-    html += '<tr><td><button type="button" id="hint"></button></td><td><button type="button" id="menu"></button></td><td><button type="button" id="flashBtn"></button></td></tr>';
-    html += '</tbody></table>';
-    html += '<p id="hintbox" class="hintbox" style="display:none"></p>';
+    html += '</tbody></table></td></tr></tbody></table>';
+    html += '<table class="pad" id="below"><tbody>';
+    html += '<tr><td><button type="button" id="notes"></button></td><td><button type="button" id="erase"></button></td><td><button type="button" id="undo"></button></td><td><button type="button" id="hint"></button></td></tr>';
+    html += '<tr><td><button type="button" id="menu"></button></td><td><button type="button" id="flashBtn"></button></td>';
+    html += '<td colspan="2" class="status"><span id="time"></span> · <span id="miss"></span> · <span id="used"></span></td>';
+    html += '</tr></tbody></table>';
+    html += '<p id="hintbox" class="hintbox"></p>';
     setApp(html);
     byId('erase').textContent = lang.erase;
     byId('undo').textContent = lang.undo;
     byId('hint').textContent = lang.hint;
     byId('menu').textContent = lang.menu;
-    byId('flashBtn').textContent = lang.refresh;
+    byId('flashBtn').textContent = lang.refreshShort;
     table = byId('board');
     tbody = document.createElement('tbody');
     boardCells = [];
@@ -885,7 +990,7 @@
     var info, html;
     view = 'done';
     info = lastResult ? levelInfo(lastResult.level) : null;
-    html = '<h1>' + lang.done + '</h1>';
+    html = '<h1>' + lang.done + '</h1>' + offlineHtml();
     if (info) html += '<p class="meta">' + esc(info.name) + '</p>';
     if (lastResult) {
       html += '<div class="block">';
@@ -912,7 +1017,7 @@
       showPlayers();
       return;
     }
-    html += '<h1>' + esc(player.name) + '</h1>';
+    html += '<h1>' + esc(player.name) + '</h1>' + offlineHtml();
     for (i = 0; i < lang.levels.length; i++) {
       info = lang.levels[i];
       st = player.stats[info.id];
@@ -983,8 +1088,16 @@
   }
 
   function prepareOffline() {
+    if (offlineBound) return;
+    offlineBound = true;
     if (!navigator.serviceWorker) return;
     if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+    try {
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        var node = byId('offline');
+        if (node) node.textContent = offlineText();
+      });
+    } catch (e4) {}
     navigator.serviceWorker.register('sw.js')['catch'](function () {});
   }
 

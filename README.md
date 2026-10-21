@@ -11,7 +11,7 @@ Zorluk, boş kare sayısından değil, çözmek için gereken en zor mantık ad�
 | Orta | Çıplak ve gizli çiftler |
 | Zor | Üçlüler ve X-Wing |
 | Uzman | Swordfish ve XY-Wing |
-| Usta | XYZ-Wing |
+| ZeyLevel | XYZ-Wing |
 
 Oyun Kindle’ın web tarayıcısında çalışır. EPUB, AZW3 ve KFX JavaScript çalıştırmaz; dosyayı kitap gibi açmayın. Jailbreak gerekmez.
 

@@ -7,8 +7,10 @@
 <style>
   html, body { margin: 0; padding: 0; background: #fff; color: #000; }
   body { padding: 8px; font-family: sans-serif; }
-  h1 { font-size: 28px; font-weight: bold; text-align: center; margin: 8px 0; }
-  p { margin: 6px 0; }
+  body.play { padding: 4px; }
+  h1 { font-size: 26px; font-weight: bold; text-align: center; margin: 4px 0; }
+  p { margin: 4px 0; }
+  p.offline { font-weight: bold; font-size: 16px; text-align: center; margin: 2px 0 8px; }
   button, input.name {
     -webkit-appearance: none;
     appearance: none;
@@ -30,11 +32,19 @@
   .err { min-height: 1.2em; font-size: 16px; }
   .block { border: 2px solid #000; padding: 8px; margin: 8px 0; }
   .bname { font-weight: bold; font-size: 18px; margin-bottom: 4px; }
-  .wrap { max-width: 640px; margin: 0 auto; }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  table.head { width: 100%; border-collapse: collapse; margin: 0 0 4px; }
+  table.head td { vertical-align: top; padding: 0; }
+  table.head h1 { text-align: left; font-size: 24px; margin: 0; }
+  td.hmeta { text-align: right; }
+  table.head p.meta { text-align: right; margin: 4px 0 0; font-size: 15px; }
+  table.head p.offline { text-align: left; margin: 2px 0 4px; font-size: 15px; }
+  table.stage { margin: 0 auto; border-collapse: collapse; }
+  td.boardwrap { vertical-align: top; padding: 0 6px 0 0; }
+  td.sidewrap { vertical-align: top; width: 156px; }
   table.board {
     width: 100%;
-    max-width: 640px;
-    margin: 8px auto;
+    margin: 0;
     border-collapse: collapse;
     table-layout: fixed;
     background: #fff;
@@ -67,16 +77,19 @@
     padding: 0;
     height: auto;
   }
+  table.side { width: 156px; border-collapse: separate; border-spacing: 3px; }
+  table.side td { width: 33%; padding: 0; }
+  table.side button { margin: 0; min-height: 0; height: 100%; padding: 0; font-size: 20px; }
   table.pad {
     width: 100%;
-    max-width: 640px;
-    margin: 6px auto;
+    margin: 4px 0 0;
     border-collapse: separate;
-    border-spacing: 4px;
+    border-spacing: 3px;
   }
-  table.pad td { width: 33%; padding: 0; }
-  table.pad button { margin: 0; font-size: 22px; min-height: 48px; }
-  .hintbox { border: 2px solid #000; padding: 8px; margin: 8px 0; font-size: 16px; }
+  table.pad td { width: 25%; padding: 0; vertical-align: middle; }
+  table.pad button { margin: 0; font-size: 16px; min-height: 40px; padding: 4px; }
+  td.status { text-align: center; font-size: 15px; }
+  .hintbox { border: 0 solid #000; padding: 4px 6px; margin: 4px 0 0; font-size: 15px; min-height: 2.4em; }
   #flash { display: none; background: #fff; height: 2400px; }
 </style>
 </head>
