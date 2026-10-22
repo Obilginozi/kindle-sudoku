@@ -1005,7 +1005,7 @@
     html += '</tr></tbody></table>';
     html += '<p id="hintbox" class="hintbox"></p>';
     html += '</td></tr></tbody></table>';
-    html += '<div id="egg" class="egg" style="display:none"><div class="eggbox"><p>Aşk ile yapıldı.</p><button type="button" id="eggok">Tamam</button></div></div>';
+    html += '<div id="egg" class="egg" style="display:none"><div class="eggbox"><p>Zeynep Sude Bilgin<br>için aşk ile yapıldı.</p><button type="button" id="eggok">Tamam</button></div></div>';
     setApp(html);
     byId('erase').textContent = lang.erase;
     byId('undo').textContent = lang.undo;
