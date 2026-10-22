@@ -1,5 +1,5 @@
 /* Caches the game after the first online open so Kindle can reload it in airplane mode. */
-var CACHE = 'kindle-sudoku-v4';
+var CACHE = 'kindle-sudoku-v5';
 
 self.addEventListener('install', function (event) {
   event.waitUntil(

@@ -615,7 +615,7 @@
     rootH = vh - 8;
     if (rootH < 240) rootH = 240;
     if (root) root.style.height = rootH + 'px';
-    toolW = 78;
+    toolW = 120;
     if (tools) {
       tools.style.width = toolW + 'px';
       if (tools.parentNode && tools.parentNode.style) tools.parentNode.style.width = toolW + 'px';
@@ -663,10 +663,12 @@
 
   function updateHud() {
     var g = cur();
-    var info;
-    if (!g || !byId('hud')) return;
+    var info, player;
+    if (!g || !byId('time')) return;
     info = levelInfo(g.level);
-    byId('hud').textContent = findPlayer(state.lastPlayer).name + ' · ' + info.name;
+    player = findPlayer(state.lastPlayer);
+    if (byId('pname')) byId('pname').textContent = player ? player.name : '';
+    if (byId('plevel')) byId('plevel').textContent = info ? info.name : '';
     byId('time').textContent = formatMs(liveMs());
     byId('miss').textContent = L().mistakes + ' ' + g.mistakes;
     byId('used').textContent = L().hints + ' ' + g.hintsUsed;
@@ -923,9 +925,9 @@
     lang = L();
     html = '<table class="playroot" id="playroot"><tbody>';
     html += '<tr><td id="ghead"><table class="head"><tbody><tr>';
+    html += '<td class="hspacer"></td>';
     html += '<td class="htitle"><h1>' + lang.title + '</h1></td>';
-    html += '<td class="hstatus"><span id="time"></span> · <span id="miss"></span> · <span id="used"></span></td>';
-    html += '<td class="hmeta"><p id="hud" class="meta"></p></td>';
+    html += '<td class="hcredit">By Obilginozi</td>';
     html += '</tr></tbody></table></td></tr>';
     html += '<tr><td class="mid"><table class="stage"><tbody><tr>';
     html += '<td class="toolwrap"><table class="tools" id="tools"><tbody>';
@@ -935,7 +937,14 @@
     html += '<tr><td><button type="button" id="hint"></button></td></tr>';
     html += '<tr><td><button type="button" id="menu"></button></td></tr>';
     html += '<tr><td><button type="button" id="flashBtn"></button></td></tr>';
-    html += '</tbody></table></td>';
+    html += '</tbody></table>';
+    html += '<div class="sideinfo">';
+    html += '<div id="pname"></div>';
+    html += '<div id="plevel"></div>';
+    html += '<div id="time"></div>';
+    html += '<div id="miss"></div>';
+    html += '<div id="used"></div>';
+    html += '</div></td>';
     html += '<td id="boardwrap" class="boardwrap"><table id="board" class="board"></table></td>';
     html += '</tr></tbody></table></td></tr>';
     html += '<tr><td id="gfoot">';
