@@ -30,6 +30,21 @@
   .meta { text-align: center; font-size: 16px; }
   p.quote { text-align: center; margin: 18px 0 0; font-size: 16px; }
   p.quote .src { display: block; margin-top: 4px; font-size: 14px; }
+  table.home { width: 100%; border-collapse: collapse; }
+  td.quotecell { height: 100%; vertical-align: middle; text-align: center; }
+  td.quotecell p.quote { margin: 0; }
+  td.hlang { width: 30%; text-align: right; }
+  table.langs { margin-left: auto; border-collapse: separate; border-spacing: 6px 0; }
+  table.langs td { width: auto; padding: 0; }
+  table.langs button {
+    width: auto;
+    min-width: 46px;
+    min-height: 0;
+    height: 32px;
+    margin: 0;
+    padding: 0 8px;
+    font-size: 14px;
+  }
   .about { display: block; font-size: 14px; font-weight: normal; }
   .err { min-height: 1.2em; font-size: 16px; }
   .block { border: 2px solid #000; padding: 8px; margin: 8px 0; }
@@ -1116,6 +1131,7 @@ var PUZZLES = {"beginner":[{"g":"26097000058000310930000802504000103693085604171
       panel.style.display = 'none';
       app.style.display = 'block';
       if (view === 'game') sizeBoard();
+      else if (view === 'home') sizeHome();
     }, 280);
   }
 
@@ -1145,17 +1161,27 @@ var PUZZLES = {"beginner":[{"g":"26097000058000310930000802504000103693085604171
     setLangAttr();
     lang = L();
     player = findPlayer(state.lastPlayer);
-    html = '<h1>' + lang.title + '</h1>' + offlineHtml();
+    html = '<table class="home" id="home"><tbody><tr><td>';
+    html += '<table class="head"><tbody><tr>';
+    html += '<td class="hspacer"></td>';
+    html += '<td class="htitle"><h1>' + lang.title + '</h1></td>';
+    html += '<td class="hlang"><table class="langs"><tbody><tr>';
+    html += '<td><button type="button" id="tr">TR</button></td>';
+    html += '<td><button type="button" id="en">EN</button></td>';
+    html += '</tr></tbody></table></td>';
+    html += '</tr></tbody></table>';
+    html += offlineHtml();
     if (player) html += '<p class="meta">' + esc(player.name) + '</p>';
     if (player && player.current) {
       html += '<button type="button" id="cont">' + lang.cont + ' (' + formatMs(player.current.elapsedMs) + ')</button>';
     }
     html += '<button type="button" id="new">' + lang.newGame + '</button>';
     html += '<button type="button" id="stats">' + lang.stats + '</button>';
-    html += '<button type="button" id="lang">' + lang.language + '</button>';
     html += '<button type="button" id="conf">' + (state.checkConflicts ? lang.confOn : lang.confOff) + '</button>';
     html += '<button type="button" id="flashBtn">' + lang.refresh + '</button>';
+    html += '</td></tr><tr><td class="quotecell">';
     html += '<p class="quote">"To define is to limit."<span class="src">The Picture of Dorian Gray</span></p>';
+    html += '</td></tr></tbody></table>';
     setApp(html);
     if (byId('cont')) byId('cont').onclick = function () { showGame(); };
     byId('new').onclick = function () { purpose = 'play'; showPlayers(); };
@@ -1168,13 +1194,27 @@ var PUZZLES = {"beginner":[{"g":"26097000058000310930000802504000103693085604171
       if (!findPlayer(state.lastPlayer)) state.lastPlayer = state.players[0].name;
       showStats();
     };
-    byId('lang').onclick = showLang;
+    byId('tr').onclick = function () { chooseLang('tr'); };
+    byId('en').onclick = function () { chooseLang('en'); };
+    if (state.lang === 'en') byId('en').className = 'on';
+    else byId('tr').className = 'on';
     byId('conf').onclick = function () {
       state.checkConflicts = !state.checkConflicts;
       save();
       showHome();
     };
     byId('flashBtn').onclick = flash;
+    sizeHome();
+  }
+
+  function sizeHome() {
+    var home = byId('home');
+    var vh, h;
+    if (!home) return;
+    vh = viewportH();
+    h = vh - 16;
+    if (h < 240) h = 240;
+    home.style.height = h + 'px';
   }
 
   function showPlayers() {
@@ -2006,8 +2046,7 @@ var PUZZLES = {"beginner":[{"g":"26097000058000310930000802504000103693085604171
     load();
     document.onkeydown = onKey;
     prepareOffline();
-    if (!state.lang) showLang();
-    else showHome();
+    showHome();
   }
 
   main();

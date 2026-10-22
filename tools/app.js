@@ -276,6 +276,7 @@
       panel.style.display = 'none';
       app.style.display = 'block';
       if (view === 'game') sizeBoard();
+      else if (view === 'home') sizeHome();
     }, 280);
   }
 
@@ -305,17 +306,27 @@
     setLangAttr();
     lang = L();
     player = findPlayer(state.lastPlayer);
-    html = '<h1>' + lang.title + '</h1>' + offlineHtml();
+    html = '<table class="home" id="home"><tbody><tr><td>';
+    html += '<table class="head"><tbody><tr>';
+    html += '<td class="hspacer"></td>';
+    html += '<td class="htitle"><h1>' + lang.title + '</h1></td>';
+    html += '<td class="hlang"><table class="langs"><tbody><tr>';
+    html += '<td><button type="button" id="tr">TR</button></td>';
+    html += '<td><button type="button" id="en">EN</button></td>';
+    html += '</tr></tbody></table></td>';
+    html += '</tr></tbody></table>';
+    html += offlineHtml();
     if (player) html += '<p class="meta">' + esc(player.name) + '</p>';
     if (player && player.current) {
       html += '<button type="button" id="cont">' + lang.cont + ' (' + formatMs(player.current.elapsedMs) + ')</button>';
     }
     html += '<button type="button" id="new">' + lang.newGame + '</button>';
     html += '<button type="button" id="stats">' + lang.stats + '</button>';
-    html += '<button type="button" id="lang">' + lang.language + '</button>';
     html += '<button type="button" id="conf">' + (state.checkConflicts ? lang.confOn : lang.confOff) + '</button>';
     html += '<button type="button" id="flashBtn">' + lang.refresh + '</button>';
+    html += '</td></tr><tr><td class="quotecell">';
     html += '<p class="quote">"To define is to limit."<span class="src">The Picture of Dorian Gray</span></p>';
+    html += '</td></tr></tbody></table>';
     setApp(html);
     if (byId('cont')) byId('cont').onclick = function () { showGame(); };
     byId('new').onclick = function () { purpose = 'play'; showPlayers(); };
@@ -328,13 +339,27 @@
       if (!findPlayer(state.lastPlayer)) state.lastPlayer = state.players[0].name;
       showStats();
     };
-    byId('lang').onclick = showLang;
+    byId('tr').onclick = function () { chooseLang('tr'); };
+    byId('en').onclick = function () { chooseLang('en'); };
+    if (state.lang === 'en') byId('en').className = 'on';
+    else byId('tr').className = 'on';
     byId('conf').onclick = function () {
       state.checkConflicts = !state.checkConflicts;
       save();
       showHome();
     };
     byId('flashBtn').onclick = flash;
+    sizeHome();
+  }
+
+  function sizeHome() {
+    var home = byId('home');
+    var vh, h;
+    if (!home) return;
+    vh = viewportH();
+    h = vh - 16;
+    if (h < 240) h = 240;
+    home.style.height = h + 'px';
   }
 
   function showPlayers() {
@@ -1166,8 +1191,7 @@
     load();
     document.onkeydown = onKey;
     prepareOffline();
-    if (!state.lang) showLang();
-    else showHome();
+    showHome();
   }
 
   main();
