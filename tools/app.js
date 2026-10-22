@@ -958,7 +958,9 @@
     html += '</div>';
     html += '<div class="infobox">';
     html += '<div id="time" class="stat"></div>';
+    html += '<div class="dot">.</div>';
     html += '<div id="miss" class="stat"></div>';
+    html += '<div class="dot">.</div>';
     html += '<div id="used" class="stat"></div>';
     html += '</div></div></td>';
     html += '<td id="boardwrap" class="boardwrap"><table id="board" class="board"></table></td>';

@@ -94,12 +94,12 @@
     text-align: center;
   }
   #menu { margin-top: 0; }
-  .sideinfo { margin: 0; }
+  .sideinfo { margin: 22px 0 0; }
   .infobox {
     -webkit-box-sizing: border-box;
     box-sizing: border-box;
     border: 2px solid #000;
-    margin: 8px 0 0;
+    margin: 10px 0 0;
     padding: 5px 4px;
     text-align: center;
     background: #fff;
@@ -107,6 +107,7 @@
   .infobox .who { margin: 0; font-size: 14px; font-weight: bold; line-height: 1.25; word-wrap: break-word; }
   .infobox .lvl { margin: 2px 0 0; font-size: 12px; line-height: 1.25; word-wrap: break-word; }
   .infobox .stat { margin: 0; padding: 1px 0; font-size: 13px; line-height: 1.35; }
+  .infobox .dot { margin: 0; padding: 0; font-size: 16px; line-height: 0.8; font-weight: bold; }
   table.digits { width: 100%; border-collapse: separate; border-spacing: 4px 0; margin: 0; }
   table.digits td { width: 11%; padding: 0; }
   table.digits button {
@@ -1795,7 +1796,9 @@ var PUZZLES = {"beginner":[{"g":"26097000058000310930000802504000103693085604171
     html += '</div>';
     html += '<div class="infobox">';
     html += '<div id="time" class="stat"></div>';
+    html += '<div class="dot">.</div>';
     html += '<div id="miss" class="stat"></div>';
+    html += '<div class="dot">.</div>';
     html += '<div id="used" class="stat"></div>';
     html += '</div></div></td>';
     html += '<td id="boardwrap" class="boardwrap"><table id="board" class="board"></table></td>';
