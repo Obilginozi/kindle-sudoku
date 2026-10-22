@@ -315,6 +315,7 @@
     html += '<button type="button" id="lang">' + lang.language + '</button>';
     html += '<button type="button" id="conf">' + (state.checkConflicts ? lang.confOn : lang.confOff) + '</button>';
     html += '<button type="button" id="flashBtn">' + lang.refresh + '</button>';
+    html += '<p class="quote">"To define is to limit."<span class="src">The Picture of Dorian Gray</span></p>';
     setApp(html);
     if (byId('cont')) byId('cont').onclick = function () { showGame(); };
     byId('new').onclick = function () { purpose = 'play'; showPlayers(); };
