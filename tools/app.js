@@ -341,7 +341,7 @@
     var html = '';
     var i;
     view = 'players';
-    html += '<h1>' + lang.who + '</h1>' + offlineHtml();
+    html += '<h1>' + lang.who + '</h1>';
     if (purpose === 'play') {
       html += '<input id="name" class="name" type="text" maxlength="20" autocomplete="off">';
       html += '<button type="button" id="add">' + lang.add + '</button>';
@@ -413,7 +413,7 @@
       showPlayers();
       return;
     }
-    html += '<h1>' + esc(player.name) + '</h1>' + offlineHtml();
+    html += '<h1>' + esc(player.name) + '</h1>';
     if (player.current) html += '<p class="meta">' + lang.replace + '</p>';
     for (i = 0; i < lang.levels.length; i++) {
       info = lang.levels[i];
@@ -565,82 +565,85 @@
     return window.innerHeight || document.documentElement.clientHeight || 0;
   }
 
-  function applySize(h, sideW) {
+  function applySize(h) {
     var table = byId('board');
     var wrap = byId('boardwrap');
-    var side = byId('side');
-    var rows, rowH, i, px;
+    var i, px;
     px = h * 9;
-    if (wrap) wrap.style.width = (px + 4) + 'px';
+    if (wrap) wrap.style.width = (px + 2) + 'px';
     if (table) {
       table.style.width = px + 'px';
       table.style.height = px + 'px';
     }
-    if (side) {
-      side.style.width = sideW + 'px';
-      side.style.height = px + 'px';
-      if (side.parentNode && side.parentNode.style) side.parentNode.style.width = sideW + 'px';
-      rows = side.getElementsByTagName('tr');
-      rowH = (px / 3) | 0;
-      for (i = 0; i < rows.length; i++) rows[i].style.height = rowH + 'px';
-      rows = side.getElementsByTagName('button');
-      rowH = rowH - 8;
-      if (rowH < 28) rowH = 28;
-      for (i = 0; i < rows.length; i++) rows[i].style.height = rowH + 'px';
-    }
     notePx = (h / 5) | 0;
     if (notePx < 7) notePx = 7;
-    if (notePx > 14) notePx = 14;
+    if (notePx > 16) notePx = 16;
     for (i = 0; i < boardCells.length; i++) {
       boardCells[i].style.height = h + 'px';
       boardCells[i].style.fontSize = ((h * 0.52) | 0) + 'px';
     }
-    rows = byId('stage');
-    wrap = byId('below');
-    if (rows && wrap) {
-      wrap.style.width = rows.offsetWidth + 'px';
-      wrap.style.marginLeft = 'auto';
-      wrap.style.marginRight = 'auto';
-    }
     renderAll();
+  }
+
+  function sizeDigits() {
+    var digits = byId('digits');
+    var buttons, dw, i, fs;
+    if (!digits) return 0;
+    buttons = digits.getElementsByTagName('button');
+    if (!buttons.length) return digits.offsetHeight;
+    dw = buttons[0].offsetWidth;
+    if (dw < 26) dw = 26;
+    fs = (dw * 0.52) | 0;
+    if (fs < 14) fs = 14;
+    if (fs > 32) fs = 32;
+    for (i = 0; i < buttons.length; i++) {
+      buttons[i].style.height = dw + 'px';
+      buttons[i].style.fontSize = fs + 'px';
+    }
+    return digits.offsetHeight;
   }
 
   function sizeBoard() {
     var table = byId('board');
-    var stage = byId('stage');
-    var below = byId('below');
-    var side = byId('side');
-    var stageW, sideW, boardMax, cellW, vh, top, belowH, room, h, docH, extra, shrink;
+    var root = byId('playroot');
+    var tools = byId('tools');
+    var head = byId('ghead');
+    var foot = byId('gfoot');
+    var toolW, stageW, boardMax, cellW, vh, rootH, headH, footH, room, h, docH, extra, shrink;
     if (!table || !boardCells.length) return;
-    stageW = stage && stage.parentNode ? stage.parentNode.clientWidth : 0;
-    if (!stageW && table.parentNode) stageW = table.parentNode.clientWidth;
+    vh = viewportH();
+    rootH = vh - 8;
+    if (rootH < 240) rootH = 240;
+    if (root) root.style.height = rootH + 'px';
+    toolW = 78;
+    if (tools) {
+      tools.style.width = toolW + 'px';
+      if (tools.parentNode && tools.parentNode.style) tools.parentNode.style.width = toolW + 'px';
+    }
+    sizeDigits();
+    stageW = root ? root.clientWidth : 0;
     if (!stageW) {
       renderAll();
       return;
     }
-    sideW = stageW > 520 ? 168 : ((stageW * 0.36) | 0);
-    if (sideW < 108) sideW = 108;
-    if (side) side.style.width = sideW + 'px';
-    boardMax = stageW - sideW - 10;
+    boardMax = stageW - toolW - 8;
     if (boardMax < 180) boardMax = 180;
     cellW = (boardMax / 9) | 0;
-    vh = viewportH();
-    top = stage ? stage.offsetTop : 70;
-    belowH = below ? below.offsetHeight : 90;
-    room = vh - top - belowH - 44;
+    headH = head ? head.offsetHeight : 32;
+    footH = foot ? foot.offsetHeight : 48;
+    room = rootH - headH - footH - 4;
     if (room < 180) room = 180;
     h = (room / 9) | 0;
     if (cellW < h) h = cellW;
-    if (h > 64) h = 64;
-    if (h < 24) h = 24;
-    applySize(h, sideW);
+    if (h < 22) h = 22;
+    applySize(h);
     docH = document.body.scrollHeight || document.documentElement.scrollHeight;
-    if (vh && docH > vh + 2 && h > 24) {
+    if (vh && docH > vh + 2 && h > 22) {
       extra = docH - vh;
       shrink = ((extra / 9) | 0) + 1;
       h = h - shrink;
-      if (h < 24) h = 24;
-      applySize(h, sideW);
+      if (h < 22) h = 22;
+      applySize(h);
     }
   }
 
@@ -679,9 +682,13 @@
 
   function setHintBox(text) {
     var box = byId('hintbox');
+    var had, next;
     if (!box) return;
+    had = box.textContent ? 1 : 0;
+    next = text ? 1 : 0;
     box.textContent = text || '';
     box.style.borderWidth = text ? '2px' : '0';
+    if (view === 'game' && had !== next) sizeBoard();
   }
 
   function houseLabel(house, index) {
@@ -914,23 +921,37 @@
     view = 'game';
     sessionStart = Date.now();
     lang = L();
-    html = '<table class="head"><tbody><tr>';
-    html += '<td><h1>' + lang.title + '</h1></td>';
+    html = '<table class="playroot" id="playroot"><tbody>';
+    html += '<tr><td id="ghead"><table class="head"><tbody><tr>';
+    html += '<td class="htitle"><h1>' + lang.title + '</h1></td>';
+    html += '<td class="hstatus"><span id="time"></span> · <span id="miss"></span> · <span id="used"></span></td>';
     html += '<td class="hmeta"><p id="hud" class="meta"></p></td>';
-    html += '</tr><tr><td colspan="2">' + offlineHtml() + '</td></tr></tbody></table>';
-    html += '<table class="stage" id="stage"><tbody><tr>';
+    html += '</tr></tbody></table></td></tr>';
+    html += '<tr><td class="mid"><table class="stage"><tbody><tr>';
+    html += '<td class="toolwrap"><table class="tools" id="tools"><tbody>';
+    html += '<tr><td><button type="button" id="notes"></button></td></tr>';
+    html += '<tr><td><button type="button" id="erase"></button></td></tr>';
+    html += '<tr><td><button type="button" id="undo"></button></td></tr>';
+    html += '<tr><td><button type="button" id="hint"></button></td></tr>';
+    html += '<tr><td><button type="button" id="menu"></button></td></tr>';
+    html += '<tr><td><button type="button" id="flashBtn"></button></td></tr>';
+    html += '</tbody></table></td>';
     html += '<td id="boardwrap" class="boardwrap"><table id="board" class="board"></table></td>';
-    html += '<td class="sidewrap"><table class="side" id="side"><tbody>';
-    html += '<tr><td><button type="button" data-d="1">1</button></td><td><button type="button" data-d="2">2</button></td><td><button type="button" data-d="3">3</button></td></tr>';
-    html += '<tr><td><button type="button" data-d="4">4</button></td><td><button type="button" data-d="5">5</button></td><td><button type="button" data-d="6">6</button></td></tr>';
-    html += '<tr><td><button type="button" data-d="7">7</button></td><td><button type="button" data-d="8">8</button></td><td><button type="button" data-d="9">9</button></td></tr>';
-    html += '</tbody></table></td></tr></tbody></table>';
-    html += '<table class="pad" id="below"><tbody>';
-    html += '<tr><td><button type="button" id="notes"></button></td><td><button type="button" id="erase"></button></td><td><button type="button" id="undo"></button></td><td><button type="button" id="hint"></button></td></tr>';
-    html += '<tr><td><button type="button" id="menu"></button></td><td><button type="button" id="flashBtn"></button></td>';
-    html += '<td colspan="2" class="status"><span id="time"></span> · <span id="miss"></span> · <span id="used"></span></td>';
+    html += '</tr></tbody></table></td></tr>';
+    html += '<tr><td id="gfoot">';
+    html += '<table class="digits" id="digits"><tbody><tr>';
+    html += '<td><button type="button" data-d="1">1</button></td>';
+    html += '<td><button type="button" data-d="2">2</button></td>';
+    html += '<td><button type="button" data-d="3">3</button></td>';
+    html += '<td><button type="button" data-d="4">4</button></td>';
+    html += '<td><button type="button" data-d="5">5</button></td>';
+    html += '<td><button type="button" data-d="6">6</button></td>';
+    html += '<td><button type="button" data-d="7">7</button></td>';
+    html += '<td><button type="button" data-d="8">8</button></td>';
+    html += '<td><button type="button" data-d="9">9</button></td>';
     html += '</tr></tbody></table>';
     html += '<p id="hintbox" class="hintbox"></p>';
+    html += '</td></tr></tbody></table>';
     setApp(html);
     byId('erase').textContent = lang.erase;
     byId('undo').textContent = lang.undo;
@@ -990,7 +1011,7 @@
     var info, html;
     view = 'done';
     info = lastResult ? levelInfo(lastResult.level) : null;
-    html = '<h1>' + lang.done + '</h1>' + offlineHtml();
+    html = '<h1>' + lang.done + '</h1>';
     if (info) html += '<p class="meta">' + esc(info.name) + '</p>';
     if (lastResult) {
       html += '<div class="block">';
@@ -1017,7 +1038,7 @@
       showPlayers();
       return;
     }
-    html += '<h1>' + esc(player.name) + '</h1>' + offlineHtml();
+    html += '<h1>' + esc(player.name) + '</h1>';
     for (i = 0; i < lang.levels.length; i++) {
       info = lang.levels[i];
       st = player.stats[info.id];

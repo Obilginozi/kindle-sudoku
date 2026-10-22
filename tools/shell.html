@@ -33,15 +33,19 @@
   .block { border: 2px solid #000; padding: 8px; margin: 8px 0; }
   .bname { font-weight: bold; font-size: 18px; margin-bottom: 4px; }
   .wrap { max-width: 900px; margin: 0 auto; }
+  body.play .wrap { max-width: none; }
+  table.playroot { width: 100%; border-collapse: collapse; }
+  td.mid { height: 100%; vertical-align: top; }
   table.head { width: 100%; border-collapse: collapse; margin: 0 0 4px; }
-  table.head td { vertical-align: top; padding: 0; }
-  table.head h1 { text-align: left; font-size: 24px; margin: 0; }
-  td.hmeta { text-align: right; }
-  table.head p.meta { text-align: right; margin: 4px 0 0; font-size: 15px; }
-  table.head p.offline { text-align: left; margin: 2px 0 4px; font-size: 15px; }
-  table.stage { margin: 0 auto; border-collapse: collapse; }
-  td.boardwrap { vertical-align: top; padding: 0 6px 0 0; }
-  td.sidewrap { vertical-align: top; width: 156px; }
+  table.head td { vertical-align: middle; padding: 0; }
+  td.htitle { width: 30%; }
+  td.hstatus { width: 40%; text-align: center; font-size: 15px; white-space: nowrap; }
+  td.hmeta { width: 30%; }
+  table.head h1 { text-align: left; font-size: 22px; margin: 0; }
+  table.head p.meta { text-align: right; margin: 0; font-size: 14px; }
+  table.stage { width: 100%; border-collapse: collapse; }
+  td.toolwrap { width: 78px; vertical-align: top; padding: 0 4px 0 0; }
+  td.boardwrap { vertical-align: top; padding: 0; }
   table.board {
     width: 100%;
     margin: 0;
@@ -77,19 +81,27 @@
     padding: 0;
     height: auto;
   }
-  table.side { width: 156px; border-collapse: separate; border-spacing: 3px; }
-  table.side td { width: 33%; padding: 0; }
-  table.side button { margin: 0; min-height: 0; height: 100%; padding: 0; font-size: 20px; }
-  table.pad {
-    width: 100%;
-    margin: 4px 0 0;
-    border-collapse: separate;
-    border-spacing: 3px;
+  table.tools { width: 78px; border-collapse: separate; border-spacing: 0 3px; }
+  table.tools td { padding: 0; }
+  table.tools button {
+    margin: 0;
+    min-height: 0;
+    height: 28px;
+    padding: 0 2px;
+    font-size: 12px;
+    line-height: 1.1;
   }
-  table.pad td { width: 25%; padding: 0; vertical-align: middle; }
-  table.pad button { margin: 0; font-size: 16px; min-height: 40px; padding: 4px; }
-  td.status { text-align: center; font-size: 15px; }
-  .hintbox { border: 0 solid #000; padding: 4px 6px; margin: 4px 0 0; font-size: 15px; min-height: 2.4em; }
+  table.digits { width: 100%; border-collapse: separate; border-spacing: 4px 0; margin: 0; }
+  table.digits td { width: 11%; padding: 0; }
+  table.digits button {
+    -webkit-box-sizing: border-box;
+    box-sizing: border-box;
+    margin: 0;
+    min-height: 0;
+    padding: 0;
+    font-size: 20px;
+  }
+  .hintbox { border: 0 solid #000; padding: 2px 4px; margin: 4px 0 0; font-size: 15px; }
   #flash { display: none; background: #fff; height: 2400px; }
 </style>
 </head>
