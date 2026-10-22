@@ -80,19 +80,33 @@
     padding: 0;
     height: auto;
   }
-  table.tools { width: 120px; border-collapse: separate; border-spacing: 0 4px; }
+  table.tools { width: 120px; margin: 0; border-collapse: separate; border-spacing: 0; }
   table.tools td { padding: 0; }
   table.tools button {
-    margin: 0;
+    -webkit-box-sizing: border-box;
+    box-sizing: border-box;
+    margin: 4px 0 0;
     min-height: 0;
     height: 32px;
     padding: 0 4px;
     font-size: 13px;
-    line-height: 30px;
+    line-height: 28px;
     text-align: center;
   }
-  .sideinfo { margin: 10px 0 0; text-align: center; font-size: 13px; line-height: 1.45; }
-  .sideinfo div { margin: 0; padding: 1px 0; word-wrap: break-word; }
+  #notes { margin-top: 0; }
+  .sideinfo { margin: 0; }
+  .infobox {
+    -webkit-box-sizing: border-box;
+    box-sizing: border-box;
+    border: 2px solid #000;
+    margin: 8px 0 0;
+    padding: 5px 4px;
+    text-align: center;
+    background: #fff;
+  }
+  .infobox .who { margin: 0; font-size: 14px; font-weight: bold; line-height: 1.25; word-wrap: break-word; }
+  .infobox .lvl { margin: 2px 0 0; font-size: 12px; line-height: 1.25; word-wrap: break-word; }
+  .infobox .stat { margin: 0; padding: 1px 0; font-size: 13px; line-height: 1.35; }
   table.digits { width: 100%; border-collapse: separate; border-spacing: 4px 0; margin: 0; }
   table.digits td { width: 11%; padding: 0; }
   table.digits button {

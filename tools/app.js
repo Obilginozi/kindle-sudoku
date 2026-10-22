@@ -645,6 +645,19 @@
       if (h < 22) h = 22;
       applySize(h);
     }
+    alignTools();
+  }
+
+  function alignTools() {
+    var board = byId('board');
+    var notes = byId('notes');
+    var tools = byId('tools');
+    var delta;
+    if (!board || !notes || !tools || !board.getBoundingClientRect) return;
+    tools.style.marginTop = '0px';
+    delta = board.getBoundingClientRect().top - notes.getBoundingClientRect().top;
+    delta = Math.round(delta);
+    if (delta) tools.style.marginTop = delta + 'px';
   }
 
   function fold() {
@@ -939,12 +952,15 @@
     html += '<tr><td><button type="button" id="flashBtn"></button></td></tr>';
     html += '</tbody></table>';
     html += '<div class="sideinfo">';
-    html += '<div id="pname"></div>';
-    html += '<div id="plevel"></div>';
-    html += '<div id="time"></div>';
-    html += '<div id="miss"></div>';
-    html += '<div id="used"></div>';
-    html += '</div></td>';
+    html += '<div class="infobox">';
+    html += '<div id="pname" class="who"></div>';
+    html += '<div id="plevel" class="lvl"></div>';
+    html += '</div>';
+    html += '<div class="infobox">';
+    html += '<div id="time" class="stat"></div>';
+    html += '<div id="miss" class="stat"></div>';
+    html += '<div id="used" class="stat"></div>';
+    html += '</div></div></td>';
     html += '<td id="boardwrap" class="boardwrap"><table id="board" class="board"></table></td>';
     html += '</tr></tbody></table></td></tr>';
     html += '<tr><td id="gfoot">';
