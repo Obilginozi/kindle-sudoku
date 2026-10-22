@@ -93,7 +93,7 @@
     line-height: 28px;
     text-align: center;
   }
-  #notes { margin-top: 0; }
+  #menu { margin-top: 0; }
   .sideinfo { margin: 0; }
   .infobox {
     -webkit-box-sizing: border-box;
@@ -118,6 +118,10 @@
     font-size: 20px;
   }
   .hintbox { border: 0 solid #000; padding: 2px 4px; margin: 4px 0 0; font-size: 15px; }
+  .egg { position: absolute; left: 0; top: 0; width: 100%; background: #fff; }
+  .eggbox { border: 2px solid #000; margin: 72px auto 0; padding: 16px; width: 260px; text-align: center; background: #fff; }
+  .eggbox p { font-size: 20px; font-weight: bold; margin: 0 0 12px; }
+  .eggbox button { margin: 0; }
   #flash { display: none; background: #fff; height: 2400px; }
 </style>
 </head>
@@ -1483,12 +1487,12 @@ var PUZZLES = {"beginner":[{"g":"26097000058000310930000802504000103693085604171
 
   function alignTools() {
     var board = byId('board');
-    var notes = byId('notes');
+    var first = byId('menu');
     var tools = byId('tools');
     var delta;
-    if (!board || !notes || !tools || !board.getBoundingClientRect) return;
+    if (!board || !first || !tools || !board.getBoundingClientRect) return;
     tools.style.marginTop = '0px';
-    delta = board.getBoundingClientRect().top - notes.getBoundingClientRect().top;
+    delta = board.getBoundingClientRect().top - first.getBoundingClientRect().top;
     delta = Math.round(delta);
     if (delta) tools.style.marginTop = delta + 'px';
   }
@@ -1761,7 +1765,7 @@ var PUZZLES = {"beginner":[{"g":"26097000058000310930000802504000103693085604171
 
   function showGame() {
     var g = cur();
-    var lang, table, tbody, r, c, i, tr, td, html;
+    var lang, table, tbody, r, c, i, tr, td, html, creditClicks;
     if (!g) {
       showHome();
       return;
@@ -1773,16 +1777,16 @@ var PUZZLES = {"beginner":[{"g":"26097000058000310930000802504000103693085604171
     html += '<tr><td id="ghead"><table class="head"><tbody><tr>';
     html += '<td class="hspacer"></td>';
     html += '<td class="htitle"><h1>' + lang.title + '</h1></td>';
-    html += '<td class="hcredit">By Obilginozi</td>';
+    html += '<td class="hcredit"><span id="credit">By Obilginozi</span></td>';
     html += '</tr></tbody></table></td></tr>';
     html += '<tr><td class="mid"><table class="stage"><tbody><tr>';
     html += '<td class="toolwrap"><table class="tools" id="tools"><tbody>';
-    html += '<tr><td><button type="button" id="notes"></button></td></tr>';
-    html += '<tr><td><button type="button" id="erase"></button></td></tr>';
-    html += '<tr><td><button type="button" id="undo"></button></td></tr>';
-    html += '<tr><td><button type="button" id="hint"></button></td></tr>';
     html += '<tr><td><button type="button" id="menu"></button></td></tr>';
     html += '<tr><td><button type="button" id="flashBtn"></button></td></tr>';
+    html += '<tr><td><button type="button" id="notes"></button></td></tr>';
+    html += '<tr><td><button type="button" id="hint"></button></td></tr>';
+    html += '<tr><td><button type="button" id="erase"></button></td></tr>';
+    html += '<tr><td><button type="button" id="undo"></button></td></tr>';
     html += '</tbody></table>';
     html += '<div class="sideinfo">';
     html += '<div class="infobox">';
@@ -1810,6 +1814,7 @@ var PUZZLES = {"beginner":[{"g":"26097000058000310930000802504000103693085604171
     html += '</tr></tbody></table>';
     html += '<p id="hintbox" class="hintbox"></p>';
     html += '</td></tr></tbody></table>';
+    html += '<div id="egg" class="egg" style="display:none"><div class="eggbox"><p>Aşk ile yapıldı.</p><button type="button" id="eggok">Tamam</button></div></div>';
     setApp(html);
     byId('erase').textContent = lang.erase;
     byId('undo').textContent = lang.undo;
@@ -1859,6 +1864,17 @@ var PUZZLES = {"beginner":[{"g":"26097000058000310930000802504000103693085604171
       showHome();
     };
     byId('flashBtn').onclick = flash;
+    creditClicks = 0;
+    byId('credit').onclick = function () {
+      creditClicks += 1;
+      if (creditClicks < 3) return;
+      creditClicks = 0;
+      byId('egg').style.height = viewportH() + 'px';
+      byId('egg').style.display = 'block';
+    };
+    byId('eggok').onclick = function () {
+      byId('egg').style.display = 'none';
+    };
     paintNotes();
     updateHud();
     sizeBoard();
